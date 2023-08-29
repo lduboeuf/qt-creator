@@ -30,7 +30,7 @@
 #include <projectexplorer/toolchain.h>
 
 #include <qtsupport/baseqtversion.h>
-#include <qtsupport/qtkitinformation.h>
+#include <qtsupport/qtkitaspect.h>
 
 #include <utils/algorithm.h>
 #include <utils/async.h>
@@ -57,7 +57,8 @@ namespace Android::Internal {
 
 static Q_LOGGING_CATEGORY(deployStepLog, "qtc.android.build.androiddeployqtstep", QtWarningMsg)
 
-const QLatin1String UninstallPreviousPackageKey("UninstallPreviousPackage");
+const char UninstallPreviousPackageKey[] = "UninstallPreviousPackage";
+
 const QLatin1String InstallFailedInconsistentCertificatesString("INSTALL_PARSE_FAILED_INCONSISTENT_CERTIFICATES");
 const QLatin1String InstallFailedUpdateIncompatible("INSTALL_FAILED_UPDATE_INCOMPATIBLE");
 const QLatin1String InstallFailedPermissionModelDowngrade("INSTALL_FAILED_PERMISSION_MODEL_DOWNGRADE");
@@ -565,7 +566,7 @@ Tasking::GroupItem AndroidDeployQtStep::runRecipe()
         async.setConcurrentCallData(&AndroidDeployQtStep::runImpl, this);
         async.setFutureSynchronizer(&m_synchronizer);
     };
-    return Tasking::AsyncTask<void>(onSetup);
+    return AsyncTask<void>(onSetup);
 }
 
 void AndroidDeployQtStep::runCommand(const CommandLine &command)

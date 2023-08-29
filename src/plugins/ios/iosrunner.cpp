@@ -12,11 +12,11 @@
 #include "iostr.h"
 
 #include <debugger/debuggerconstants.h>
-#include <debugger/debuggerkitinformation.h>
+#include <debugger/debuggerkitaspect.h>
 #include <debugger/debuggerplugin.h>
 #include <debugger/debuggerruncontrol.h>
 
-#include <projectexplorer/kitinformation.h>
+#include <projectexplorer/kitaspects.h>
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/runconfigurationaspects.h>
 #include <projectexplorer/target.h>

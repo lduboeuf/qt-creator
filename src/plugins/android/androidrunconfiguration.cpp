@@ -8,12 +8,12 @@
 #include "androidtr.h"
 
 #include <projectexplorer/buildsystem.h>
-#include <projectexplorer/kitinformation.h>
+#include <projectexplorer/kitaspects.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/runconfigurationaspects.h>
 #include <projectexplorer/target.h>
 
-#include <qtsupport/qtkitinformation.h>
+#include <qtsupport/qtkitaspect.h>
 
 #include <utils/detailswidget.h>
 #include <utils/process.h>
@@ -32,13 +32,13 @@ public:
         : StringAspect(container)
     {}
 
-    void fromMap(const QVariantMap &map) final
+    void fromMap(const Store &map) final
     {
         // Pre Qt Creator 5.0 hack: Reads QStringList as QString
         setValue(map.value(settingsKey()).toStringList().join('\n'));
     }
 
-    void toMap(QVariantMap &map) const final
+    void toMap(Store &map) const final
     {
         // Pre Qt Creator 5.0 hack: Writes QString as QStringList
         map.insert(settingsKey(), value().split('\n'));

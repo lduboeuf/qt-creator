@@ -124,14 +124,14 @@ public:
     QString makeArguments(const QString &makefile) const;
     QString effectiveQMakeCall() const;
 
-    void toMap(QVariantMap &map) const override;
+    void toMap(Utils::Store &map) const override;
 
     Utils::SelectionAspect buildType{this};
     ProjectExplorer::ArgumentsAspect userArguments{this};
     Utils::StringAspect effectiveCall{this};
 
 protected:
-    void fromMap(const QVariantMap &map) override;
+    void fromMap(const Utils::Store &map) override;
 
 private:
     Tasking::GroupItem runRecipe() final;
@@ -152,7 +152,6 @@ private:
 
     void updateAbiWidgets();
     void updateEffectiveQMakeCall();
-    void handleAbiWidgetChange();
 
     Utils::CommandLine m_qmakeCommand;
     Utils::CommandLine m_makeCommand;

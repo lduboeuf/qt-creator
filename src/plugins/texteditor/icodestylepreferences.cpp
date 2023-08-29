@@ -9,7 +9,7 @@
 
 #include <utils/settingsutils.h>
 
-using namespace TextEditor;
+using namespace Utils;
 
 static const char currentPreferencesKey[] = "CurrentPreferences";
 
@@ -27,7 +27,7 @@ public:
     bool m_readOnly = false;
     bool m_temporarilyReadOnly = false;
     bool m_isAdditionalTabDisabled = false;
-    QString m_settingsSuffix;
+    Key m_settingsSuffix;
 };
 
 }
@@ -207,29 +207,29 @@ void ICodeStylePreferences::setCurrentDelegate(const QByteArray &id)
         setCurrentDelegate(d->m_pool->codeStyle(id));
 }
 
-void ICodeStylePreferences::setSettingsSuffix(const QString &suffix)
+void ICodeStylePreferences::setSettingsSuffix(const Key &suffix)
 {
     d->m_settingsSuffix = suffix;
 }
 
-void ICodeStylePreferences::toSettings(const QString &category) const
+void ICodeStylePreferences::toSettings(const Key &category) const
 {
     Utils::toSettings(d->m_settingsSuffix, category, Core::ICore::settings(), this);
 }
 
-void ICodeStylePreferences::fromSettings(const QString &category)
+void ICodeStylePreferences::fromSettings(const Key &category)
 {
     Utils::fromSettings(d->m_settingsSuffix, category, Core::ICore::settings(), this);
 }
 
-QVariantMap ICodeStylePreferences::toMap() const
+Store ICodeStylePreferences::toMap() const
 {
     if (!currentDelegate())
         return d->m_tabSettings.toMap();
     return {{currentPreferencesKey, currentDelegateId()}};
 }
 
-void ICodeStylePreferences::fromMap(const QVariantMap &map)
+void ICodeStylePreferences::fromMap(const Store &map)
 {
     d->m_tabSettings.fromMap(map);
     const QByteArray delegateId = map.value(currentPreferencesKey).toByteArray();

@@ -13,15 +13,13 @@
 
 #include <projectexplorer/devicesupport/devicemanager.h>
 #include <projectexplorer/devicesupport/idevicewidget.h>
-#include <projectexplorer/kitinformation.h>
+#include <projectexplorer/kitaspects.h>
 
 #include <utils/portlist.h>
 
 #include <QFormLayout>
 #include <QLabel>
 #include <QMessageBox>
-#include <QVariant>
-#include <QVariantMap>
 
 #ifdef Q_OS_MAC
 #include <IOKit/IOKitLib.h>
@@ -42,6 +40,7 @@
 #include <exception>
 
 using namespace ProjectExplorer;
+using namespace Utils;
 
 namespace {
 static Q_LOGGING_CATEGORY(detectLog, "qtc.ios.deviceDetect", QtWarningMsg)
@@ -127,23 +126,23 @@ IDeviceWidget *IosDevice::createWidget()
     return new IosDeviceInfoWidget(sharedFromThis());
 }
 
-void IosDevice::fromMap(const QVariantMap &map)
+void IosDevice::fromMap(const Store &map)
 {
     IDevice::fromMap(map);
 
     m_extraInfo.clear();
-    const QVariantMap vMap = map.value(QLatin1String(Constants::EXTRA_INFO_KEY)).toMap();
+    const Store vMap = storeFromVariant(map.value(Constants::EXTRA_INFO_KEY));
     for (auto i = vMap.cbegin(), end = vMap.cend(); i != end; ++i)
-        m_extraInfo.insert(i.key(), i.value().toString());
+        m_extraInfo.insert(stringFromKey(i.key()), i.value().toString());
 }
 
-QVariantMap IosDevice::toMap() const
+Store IosDevice::toMap() const
 {
-    QVariantMap res = IDevice::toMap();
-    QVariantMap vMap;
+    Store res = IDevice::toMap();
+    Store vMap;
     for (auto i = m_extraInfo.cbegin(), end = m_extraInfo.cend(); i != end; ++i)
-        vMap.insert(i.key(), i.value());
-    res.insert(QLatin1String(Constants::EXTRA_INFO_KEY), vMap);
+        vMap.insert(keyFromString(i.key()), i.value());
+    res.insert(Constants::EXTRA_INFO_KEY, variantFromStore(vMap));
     return res;
 }
 
@@ -154,7 +153,7 @@ QString IosDevice::deviceName() const
 
 QString IosDevice::uniqueDeviceID() const
 {
-    return id().suffixAfter(Utils::Id(Constants::IOS_DEVICE_ID));
+    return id().suffixAfter(Id(Constants::IOS_DEVICE_ID));
 }
 
 QString IosDevice::uniqueInternalDeviceId() const
@@ -544,9 +543,9 @@ IosDeviceFactory::IosDeviceFactory()
     setConstructionFunction([] { return IDevice::Ptr(new IosDevice); });
 }
 
-bool IosDeviceFactory::canRestore(const QVariantMap &map) const
+bool IosDeviceFactory::canRestore(const Store &map) const
 {
-    QVariantMap vMap = map.value(QLatin1String(Constants::EXTRA_INFO_KEY)).toMap();
+    Store vMap = map.value(Constants::EXTRA_INFO_KEY).value<Store>();
     if (vMap.isEmpty() || vMap.value(kDeviceName).toString() == QLatin1String("*unknown*"))
         return false; // transient device (probably generated during an activation)
     return true;

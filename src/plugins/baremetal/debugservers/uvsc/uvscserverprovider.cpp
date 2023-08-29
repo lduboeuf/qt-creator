@@ -13,7 +13,7 @@
 #include <baremetal/baremetaltr.h>
 #include <baremetal/debugserverprovidermanager.h>
 
-#include <debugger/debuggerkitinformation.h>
+#include <debugger/debuggerkitaspect.h>
 #include <debugger/debuggerruncontrol.h>
 
 #include <projectexplorer/project.h>
@@ -147,12 +147,12 @@ FilePath UvscServerProvider::buildOptionsFilePath(DebuggerRunTool *runTool) cons
     return path;
 }
 
-void UvscServerProvider::toMap(QVariantMap &data) const
+void UvscServerProvider::toMap(Store &data) const
 {
     IDebugServerProvider::toMap(data);
     data.insert(toolsIniKeyC, m_toolsIniFile.toSettings());
-    data.insert(deviceSelectionKeyC, m_deviceSelection.toMap());
-    data.insert(driverSelectionKeyC, m_driverSelection.toMap());
+    data.insert(deviceSelectionKeyC, variantFromStore(m_deviceSelection.toMap()));
+    data.insert(driverSelectionKeyC, variantFromStore(m_driverSelection.toMap()));
 }
 
 bool UvscServerProvider::isValid() const
@@ -192,7 +192,7 @@ bool UvscServerProvider::aboutToRun(DebuggerRunTool *runTool, QString &errorMess
 
     const FilePath peripheralDescriptionFile = FilePath::fromString(m_deviceSelection.svd);
 
-    Runnable inferior;
+    ProcessRunData inferior;
     inferior.command.setExecutable(bin);
     runTool->runParameters().peripheralDescriptionFile = peripheralDescriptionFile;
     runTool->runParameters().uVisionProjectFilePath = projFilePath;
@@ -209,22 +209,22 @@ bool UvscServerProvider::aboutToRun(DebuggerRunTool *runTool, QString &errorMess
 ProjectExplorer::RunWorker *UvscServerProvider::targetRunner(RunControl *runControl) const
 {
     // Get uVision executable path.
-    const Runnable uv = DebuggerKitAspect::runnable(runControl->kit());
+    const ProcessRunData uv = DebuggerKitAspect::runnable(runControl->kit());
     CommandLine server(uv.command.executable());
     server.addArg("-j0");
     server.addArg(QStringLiteral("-s%1").arg(m_channel.port()));
 
-    Runnable r;
+    ProcessRunData r;
     r.command = server;
     return new UvscServerProviderRunner(runControl, r);
 }
 
-void UvscServerProvider::fromMap(const QVariantMap &data)
+void UvscServerProvider::fromMap(const Store &data)
 {
     IDebugServerProvider::fromMap(data);
     m_toolsIniFile = FilePath::fromSettings(data.value(toolsIniKeyC));
-    m_deviceSelection.fromMap(data.value(deviceSelectionKeyC).toMap());
-    m_driverSelection.fromMap(data.value(driverSelectionKeyC).toMap());
+    m_deviceSelection.fromMap(storeFromVariant(data.value(deviceSelectionKeyC)));
+    m_driverSelection.fromMap(storeFromVariant(data.value(driverSelectionKeyC)));
 }
 
 FilePath UvscServerProvider::projectFilePath(DebuggerRunTool *runTool, QString &errorMessage) const
@@ -348,7 +348,7 @@ void UvscServerProviderConfigWidget::setFromProvider()
 // UvscServerProviderRunner
 
 UvscServerProviderRunner::UvscServerProviderRunner(ProjectExplorer::RunControl *runControl,
-                                                   const Runnable &runnable)
+                                                   const ProcessRunData &runnable)
     : RunWorker(runControl)
 {
     setId("BareMetalUvscServer");

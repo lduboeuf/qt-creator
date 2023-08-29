@@ -12,8 +12,8 @@
 
 #include <coreplugin/icore.h>
 
+#include <projectexplorer/kitaspects.h>
 #include <projectexplorer/kitmanager.h>
-#include <projectexplorer/kitinformation.h>
 #include <projectexplorer/devicesupport/devicemanager.h>
 #include <projectexplorer/devicesupport/idevice.h>
 #include <projectexplorer/toolchainmanager.h>
@@ -23,10 +23,10 @@
 
 #include <debugger/debuggeritemmanager.h>
 #include <debugger/debuggeritem.h>
-#include <debugger/debuggerkitinformation.h>
+#include <debugger/debuggerkitaspect.h>
 
 #include <qtsupport/baseqtversion.h>
-#include <qtsupport/qtkitinformation.h>
+#include <qtsupport/qtkitaspect.h>
 #include <qtsupport/qtversionmanager.h>
 #include <qtsupport/qtversionfactory.h>
 

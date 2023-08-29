@@ -78,7 +78,7 @@ DebuggerItem::DebuggerItem(const QVariant &id)
     m_id = id;
 }
 
-DebuggerItem::DebuggerItem(const QVariantMap &data)
+DebuggerItem::DebuggerItem(const Store &data)
 {
     m_id = data.value(DEBUGGER_INFORMATION_ID).toString();
     m_command = FilePath::fromSettings(data.value(DEBUGGER_INFORMATION_COMMAND));
@@ -177,9 +177,6 @@ void DebuggerItem::reinitializeFromFile(QString *error, Utils::Environment *cust
 
     if (output.contains("gdb")) {
         m_engineType = GdbEngineType;
-        // FIXME: HACK while introducing DAP support
-        if (m_command.fileName().endsWith("-dap"))
-            m_engineType = DapEngineType;
 
         // Version
         bool isMacGdb, isQnxGdb;
@@ -283,8 +280,6 @@ QString DebuggerItem::engineTypeName() const
         return QLatin1String("CDB");
     case LldbEngineType:
         return QLatin1String("LLDB");
-    case DapEngineType:
-        return QLatin1String("DAP");
     case UvscEngineType:
         return QLatin1String("UVSC");
     default:
@@ -345,9 +340,9 @@ bool DebuggerItem::operator==(const DebuggerItem &other) const
             && m_workingDirectory == other.m_workingDirectory;
 }
 
-QVariantMap DebuggerItem::toMap() const
+Store DebuggerItem::toMap() const
 {
-    QVariantMap data;
+    Store data;
     data.insert(DEBUGGER_INFORMATION_DISPLAYNAME, m_unexpandedDisplayName);
     data.insert(DEBUGGER_INFORMATION_ID, m_id);
     data.insert(DEBUGGER_INFORMATION_COMMAND, m_command.toSettings());

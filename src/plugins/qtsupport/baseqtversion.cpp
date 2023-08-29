@@ -5,7 +5,7 @@
 
 #include "profilereader.h"
 #include "qtconfigwidget.h"
-#include "qtkitinformation.h"
+#include "qtkitaspect.h"
 #include "qtsupportconstants.h"
 #include "qtsupporttr.h"
 #include "qtversionfactory.h"
@@ -640,7 +640,7 @@ bool QtVersion::hasReleaseBuild() const
     return !d->m_defaultConfigIsDebug || d->m_defaultConfigIsDebugAndRelease;
 }
 
-void QtVersion::fromMap(const QVariantMap &map, const FilePath &filePath)
+void QtVersion::fromMap(const Store &map, const FilePath &filePath)
 {
     d->m_id = map.value(Constants::QTVERSIONID).toInt();
     if (d->m_id == -1) // this happens on adding from installer, see updateFromInstaller => get a new unique id
@@ -682,9 +682,9 @@ void QtVersion::fromMap(const QVariantMap &map, const FilePath &filePath)
     d->m_qmlRuntimePath.clear();
 }
 
-QVariantMap QtVersion::toMap() const
+Store QtVersion::toMap() const
 {
-    QVariantMap result;
+    Store result;
     result.insert(Constants::QTVERSIONID, uniqueId());
     d->m_data.unexpandedDisplayName.toMap(result, Constants::QTVERSIONNAME);
 
@@ -2323,7 +2323,7 @@ bool QtVersionFactory::canRestore(const QString &type)
     return type == m_supportedType;
 }
 
-QtVersion *QtVersionFactory::restore(const QString &type, const QVariantMap &data, const FilePath &filePath)
+QtVersion *QtVersionFactory::restore(const QString &type, const Store &data, const FilePath &filePath)
 {
     QTC_ASSERT(canRestore(type), return nullptr);
     QTC_ASSERT(m_creator, return nullptr);

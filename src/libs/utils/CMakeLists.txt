@@ -80,7 +80,6 @@ add_qtc_library(Utils
     infobar.cpp infobar.h
     infolabel.cpp infolabel.h
     itemviews.cpp itemviews.h
-    json.cpp json.h
     jsontreeitem.cpp jsontreeitem.h
     launcherinterface.cpp launcherinterface.h
     launcherpackets.cpp launcherpackets.h
@@ -115,6 +114,7 @@ add_qtc_library(Utils
     overlaywidget.cpp overlaywidget.h
     overridecursor.cpp overridecursor.h
     parameteraction.cpp parameteraction.h
+    passworddialog.cpp passworddialog.h
     pathchooser.cpp pathchooser.h
     pathlisteditor.cpp pathlisteditor.h
     persistentsettings.cpp persistentsettings.h
@@ -161,6 +161,8 @@ add_qtc_library(Utils
     sortfiltermodel.h
     span.h
     statuslabel.cpp statuslabel.h
+    store.cpp store.h
+    storekey.h
     stringtable.cpp stringtable.h
     stringutils.cpp stringutils.h
     styleanimator.cpp styleanimator.h

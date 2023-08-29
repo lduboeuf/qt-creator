@@ -23,7 +23,7 @@
 #include <projectexplorer/buildsteplist.h>
 #include <projectexplorer/buildsystem.h>
 #include <projectexplorer/devicesupport/idevice.h>
-#include <projectexplorer/kitinformation.h>
+#include <projectexplorer/kitaspects.h>
 #include <projectexplorer/runconfigurationaspects.h>
 #include <projectexplorer/target.h>
 #include <projectexplorer/taskhub.h>
@@ -127,7 +127,6 @@ public:
     {
         connect(q, &InterpreterAspect::changed,
                 this, &PythonInterpreterAspectPrivate::currentInterpreterChanged);
-        currentInterpreterChanged();
 
         connect(PySideInstaller::instance(), &PySideInstaller::pySideInstalled, this,
                 [this](const FilePath &python) {

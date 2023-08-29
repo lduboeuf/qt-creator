@@ -28,8 +28,8 @@ public:
     static Utils::FilePath fixupDir(const Utils::FilePath &dir);
 
 private:
-    void toMap(QVariantMap &map) const override;
-    void fromMap(const QVariantMap &map) override;
+    void toMap(Utils::Store &map) const override;
+    void fromMap(const Utils::Store &map) override;
 
     void updateProblemLabel();
 

@@ -662,8 +662,6 @@ bool TextDocument::saveImpl(QString *errorString, const FilePath &filePath, bool
         cursor.endEditBlock();
     }
 
-    const Utils::FilePath &savePath = filePath.isEmpty() ? this->filePath() : filePath;
-
     // check if UTF8-BOM has to be added or removed
     Utils::TextFileFormat saveFormat = format();
     if (saveFormat.codec->name() == "UTF-8" && supportsUtf8Bom()) {
@@ -679,7 +677,7 @@ bool TextDocument::saveImpl(QString *errorString, const FilePath &filePath, bool
         }
     }
 
-    const bool ok = write(savePath, saveFormat, plainText(), errorString);
+    const bool ok = write(filePath, saveFormat, plainText(), errorString);
 
     // restore text cursor and scroll bar positions
     if (autoSave && undos < d->m_document.availableUndoSteps()) {
@@ -702,7 +700,7 @@ bool TextDocument::saveImpl(QString *errorString, const FilePath &filePath, bool
 
     // inform about the new filename
     d->m_document.setModified(false); // also triggers update of the block revisions
-    setFilePath(savePath.absoluteFilePath());
+    setFilePath(filePath.absoluteFilePath());
     emit changed();
     return true;
 }
@@ -843,7 +841,7 @@ bool TextDocument::reload(QString *errorString, const FilePath &realFilePath)
     auto documentLayout =
         qobject_cast<TextDocumentLayout*>(d->m_document.documentLayout());
     if (documentLayout)
-        documentLayout->documentAboutToReload(); // removes text marks non-permanently
+        documentLayout->documentAboutToReload(this); // removes text marks non-permanently
 
     bool success = openImpl(errorString, filePath(), realFilePath, /*reload =*/true)
                    == OpenResult::Success;

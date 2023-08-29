@@ -8,7 +8,7 @@
 
 #include <projectexplorer/deployablefile.h>
 #include <projectexplorer/devicesupport/idevice.h>
-#include <projectexplorer/kitinformation.h>
+#include <projectexplorer/kitaspects.h>
 
 #include <solutions/tasking/tasktree.h>
 
@@ -81,7 +81,7 @@ void AbstractRemoteLinuxDeployStep::setInternalInitializer(
     d->internalInit = init;
 }
 
-void AbstractRemoteLinuxDeployStep::fromMap(const QVariantMap &map)
+void AbstractRemoteLinuxDeployStep::fromMap(const Store &map)
 {
     BuildStep::fromMap(map);
     if (hasError())
@@ -89,7 +89,7 @@ void AbstractRemoteLinuxDeployStep::fromMap(const QVariantMap &map)
     d->deployTimes.importDeployTimes(map);
 }
 
-void AbstractRemoteLinuxDeployStep::toMap(QVariantMap &map) const
+void AbstractRemoteLinuxDeployStep::toMap(Store &map) const
 {
     BuildStep::toMap(map);
     map.insert(d->deployTimes.exportDeployTimes());

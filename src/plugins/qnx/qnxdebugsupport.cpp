@@ -10,7 +10,7 @@
 
 #include <coreplugin/icore.h>
 
-#include <debugger/debuggerkitinformation.h>
+#include <debugger/debuggerkitaspect.h>
 #include <debugger/debuggerruncontrol.h>
 #include <debugger/debuggertr.h>
 
@@ -18,8 +18,8 @@
 #include <projectexplorer/devicesupport/deviceusedportsgatherer.h>
 #include <projectexplorer/devicesupport/idevice.h>
 #include <projectexplorer/kit.h>
+#include <projectexplorer/kitaspects.h>
 #include <projectexplorer/kitchooser.h>
-#include <projectexplorer/kitinformation.h>
 #include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/projectmanager.h>
 #include <projectexplorer/runconfigurationaspects.h>
@@ -28,7 +28,7 @@
 
 #include <qmldebug/qmldebugcommandlinearguments.h>
 
-#include <qtsupport/qtkitinformation.h>
+#include <qtsupport/qtkitaspect.h>
 
 #include <utils/fileutils.h>
 #include <utils/pathchooser.h>

@@ -18,6 +18,8 @@ static const char keyboardTooltips[] = "KeyboardTooltips";
 static const char groupPostfix[] = "BehaviorSettings";
 static const char smartSelectionChanging[] = "SmartSelectionChanging";
 
+using namespace Utils;
+
 namespace TextEditor {
 
 BehaviorSettings::BehaviorSettings() :
@@ -31,18 +33,18 @@ BehaviorSettings::BehaviorSettings() :
 {
 }
 
-void BehaviorSettings::toSettings(const QString &category) const
+void BehaviorSettings::toSettings(const Key &category) const
 {
-    Utils::toSettings(QLatin1String(groupPostfix), category, Core::ICore::settings(), this);
+    Utils::toSettings(groupPostfix, category, Core::ICore::settings(), this);
 }
 
-void BehaviorSettings::fromSettings(const QString &category)
+void BehaviorSettings::fromSettings(const Key &category)
 {
     *this = BehaviorSettings();
-    Utils::fromSettings(QLatin1String(groupPostfix), category, Core::ICore::settings(), this);
+    Utils::fromSettings(groupPostfix, category, Core::ICore::settings(), this);
 }
 
-QVariantMap BehaviorSettings::toMap() const
+Store BehaviorSettings::toMap() const
 {
     return {
         {mouseHidingKey, m_mouseHiding},
@@ -55,7 +57,7 @@ QVariantMap BehaviorSettings::toMap() const
     };
 }
 
-void BehaviorSettings::fromMap(const QVariantMap &map)
+void BehaviorSettings::fromMap(const Store &map)
 {
     m_mouseHiding = map.value(mouseHidingKey, m_mouseHiding).toBool();
     m_mouseNavigation = map.value(mouseNavigationKey, m_mouseNavigation).toBool();

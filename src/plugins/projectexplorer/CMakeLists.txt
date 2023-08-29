@@ -103,12 +103,11 @@ add_qtc_plugin(ProjectExplorer
     jsonwizard/wizarddebug.h
     jsonwizard/jsonwizardscannergenerator.cpp jsonwizard/jsonwizardscannergenerator.h
     kit.cpp kit.h
+    kitaspects.cpp kitaspects.h
     kitchooser.cpp kitchooser.h
     kitfeatureprovider.h
-    kitinformation.cpp kitinformation.h
     kitmanager.cpp kitmanager.h
     kitmanagerconfigwidget.cpp kitmanagerconfigwidget.h
-    kitmodel.cpp kitmodel.h
     kitoptionspage.cpp kitoptionspage.h
     ldparser.cpp ldparser.h
     lldparser.cpp lldparser.h
@@ -124,6 +123,7 @@ add_qtc_plugin(ProjectExplorer
     processparameters.cpp processparameters.h
     processstep.cpp processstep.h
     project.cpp project.h
+    projectcommentssettings.cpp projectcommentssettings.h
     projectconfiguration.cpp projectconfiguration.h
     projectconfigurationmodel.cpp projectconfigurationmodel.h
     projectexplorer.cpp projectexplorer.h

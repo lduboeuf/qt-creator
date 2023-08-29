@@ -630,9 +630,7 @@ FancyLineEdit::AsyncValidationFunction PathChooser::defaultValidationFunction() 
         return Utils::asyncRun(
             [expanded,
              defVal = d->m_defaultValue,
-             kind = d->m_acceptingKind,
-             env = d->m_environment,
-             baseDirectory = d->m_baseDirectory]() -> FancyLineEdit::AsyncValidationResult {
+             kind = d->m_acceptingKind]() -> FancyLineEdit::AsyncValidationResult {
                 return validatePath(expanded, defVal, kind);
             });
     };
@@ -737,7 +735,7 @@ void PathChooser::installLineEditVersionToolTip(QLineEdit *le, const QStringList
     ef->setArguments(arguments);
 }
 
-void PathChooser::setHistoryCompleter(const QString &historyKey, bool restoreLastItemFromHistory)
+void PathChooser::setHistoryCompleter(const Key &historyKey, bool restoreLastItemFromHistory)
 {
     d->m_lineEdit->setHistoryCompleter(historyKey, restoreLastItemFromHistory);
 }

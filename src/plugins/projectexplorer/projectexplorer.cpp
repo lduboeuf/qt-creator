@@ -47,7 +47,7 @@
 #include "jsonwizard/jsonwizardgeneratorfactory.h"
 #include "jsonwizard/jsonwizardpagefactory_p.h"
 #include "kitfeatureprovider.h"
-#include "kitinformation.h"
+#include "kitaspects.h"
 #include "kitmanager.h"
 #include "kitoptionspage.h"
 #include "miniprojecttargetselector.h"
@@ -55,6 +55,7 @@
 #include "parseissuesdialog.h"
 #include "processstep.h"
 #include "project.h"
+#include "projectcommentssettings.h"
 #include "projectexplorericons.h"
 #include "projectexplorersettings.h"
 #include "projectexplorertr.h"
@@ -81,6 +82,7 @@
 #include "msvctoolchain.h"
 #endif
 
+#include "customparser.h"
 #include "projecttree.h"
 #include "projectwelcomepage.h"
 
@@ -115,6 +117,7 @@
 #include <texteditor/findinfiles.h>
 #include <texteditor/textdocument.h>
 #include <texteditor/texteditorconstants.h>
+#include <texteditor/texteditorsettings.h>
 
 #include <utils/algorithm.h>
 #include <utils/fileutils.h>
@@ -122,6 +125,7 @@
 #include <utils/mimeutils.h>
 #include <utils/parameteraction.h>
 #include <utils/processhandle.h>
+#include <utils/processinterface.h>
 #include <utils/proxyaction.h>
 #include <utils/qtcassert.h>
 #include <utils/removefiledialog.h>
@@ -422,6 +426,18 @@ private:
     Core::LocatorMatcherTasks matchers() final;
 };
 
+class DefaultDeployConfigurationFactory final : public DeployConfigurationFactory
+{
+public:
+    DefaultDeployConfigurationFactory()
+    {
+        setConfigBaseId("ProjectExplorer.DefaultDeployConfiguration");
+        addSupportedTargetDeviceType(Constants::DESKTOP_DEVICE_TYPE);
+        //: Display name of the default deploy configuration
+        setDefaultDisplayName(Tr::tr("Deploy Configuration"));
+    }
+};
+
 class ProjectExplorerPluginPrivate : public QObject
 {
 public:
@@ -620,7 +636,6 @@ public:
     DesktopDeviceFactory m_desktopDeviceFactory;
 
     ToolChainOptionsPage m_toolChainOptionsPage;
-    KitOptionsPage m_kitOptionsPage;
 
     TaskHub m_taskHub;
 
@@ -675,13 +690,6 @@ public:
     IDocumentFactory m_taskFileFactory;
     StopMonitoringHandler closeTaskFile;
 
-    DeviceTypeKitAspect deviceTypeKitAspect;
-    DeviceKitAspect deviceKitAspect;
-    BuildDeviceKitAspect buildDeviceKitAspect;
-    ToolChainKitAspect toolChainKitAspect;
-    SysRootKitAspect sysRootKitAspect;
-    EnvironmentKitAspect environmentKitAspect;
-
     DesktopQmakeRunConfigurationFactory qmakeRunConfigFactory;
     QbsRunConfigurationFactory qbsRunConfigFactory;
     CMakeRunConfigurationFactory cmakeRunConfigFactory;
@@ -693,6 +701,15 @@ public:
 
     DeviceCheckBuildStepFactory deviceCheckBuildStepFactory;
     SanitizerOutputFormatterFactory sanitizerFormatterFactory;
+
+    // JsonWizard related
+    FieldPageFactory fieldPageFactory;
+    FilePageFactory filePageFactory;
+    KitsPageFactory kitsPageFactory;
+    ProjectPageFactory projectPageFactory;
+    SummaryPageFactory summaryPageFactory;
+    FileGeneratorFactory fileGeneratorFactory;
+    ScannerGeneratorFactory scannerGeneratorFactory;
 };
 
 static ProjectExplorerPlugin *m_instance = nullptr;
@@ -759,7 +776,6 @@ ProjectExplorerPlugin::~ProjectExplorerPlugin()
     QTC_ASSERT(dd, return);
 
     delete dd->m_proWindow; // Needs access to the kit manager.
-    JsonWizardFactory::destroyAllFactories();
 
     // Force sequence of deletion:
     KitManager::destroy(); // remove all the profile information
@@ -846,15 +862,6 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
                                                                       : FilePath());
     });
 
-    // For JsonWizard:
-    JsonWizardFactory::registerPageFactory(new FieldPageFactory);
-    JsonWizardFactory::registerPageFactory(new FilePageFactory);
-    JsonWizardFactory::registerPageFactory(new KitsPageFactory);
-    JsonWizardFactory::registerPageFactory(new ProjectPageFactory);
-    JsonWizardFactory::registerPageFactory(new SummaryPageFactory);
-    JsonWizardFactory::registerGeneratorFactory(new FileGeneratorFactory);
-    JsonWizardFactory::registerGeneratorFactory(new ScannerGeneratorFactory);
-
     dd->m_proWindow = new ProjectWindow;
 
     Context projectTreeContext(Constants::C_PROJECT_TREE);
@@ -882,6 +889,17 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
     panelFactory->setDisplayName(Tr::tr("Code Style"));
     panelFactory->setCreateWidgetFunction([](Project *project) { return new CodeStyleSettingsWidget(project); });
     ProjectPanelFactory::registerFactory(panelFactory);
+
+    panelFactory = new ProjectExplorer::ProjectPanelFactory;
+    panelFactory->setPriority(45);
+    panelFactory->setDisplayName(Tr::tr("Documentation Comments"));
+    panelFactory->setCreateWidgetFunction([](ProjectExplorer::Project *project) {
+        return new ProjectCommentsSettingsWidget(project);
+    });
+    ProjectExplorer::ProjectPanelFactory::registerFactory(panelFactory);
+    TextEditor::TextEditorSettings::setCommentsSettingsRetriever([](const FilePath &filePath) {
+        return ProjectCommentsSettings(ProjectManager::projectForFile(filePath)).settings();
+    });
 
     panelFactory = new ProjectPanelFactory;
     panelFactory->setPriority(50);
@@ -1684,8 +1702,8 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
     const int customParserCount = s->value(Constants::CUSTOM_PARSER_COUNT_KEY).toInt();
     for (int i = 0; i < customParserCount; ++i) {
         CustomParserSettings settings;
-        settings.fromMap(s->value(Constants::CUSTOM_PARSER_PREFIX_KEY
-                                  + QString::number(i)).toMap());
+        settings.fromMap(storeFromVariant(
+            s->value(Constants::CUSTOM_PARSER_PREFIX_KEY + Key::number(i))));
         dd->m_customParsers << settings;
     }
 
@@ -2260,8 +2278,8 @@ void ProjectExplorerPluginPrivate::savePersistentSettings()
 
     s->setValueWithDefault(Constants::CUSTOM_PARSER_COUNT_KEY, int(dd->m_customParsers.count()), 0);
     for (int i = 0; i < dd->m_customParsers.count(); ++i) {
-        s->setValue(Constants::CUSTOM_PARSER_PREFIX_KEY + QString::number(i),
-                    dd->m_customParsers.at(i).toMap());
+        s->setValue(Constants::CUSTOM_PARSER_PREFIX_KEY + Key::number(i),
+                    variantFromStore(dd->m_customParsers.at(i).toMap()));
     }
 }
 
@@ -2957,17 +2975,6 @@ void ProjectExplorerPlugin::runRunConfiguration(RunConfiguration *rc,
     dd->doUpdateRunActions();
 }
 
-QList<QPair<CommandLine, ProcessHandle>> ProjectExplorerPlugin::runningRunControlProcesses()
-{
-    QList<QPair<CommandLine, ProcessHandle>> processes;
-    const QList<RunControl *> runControls = allRunControls();
-    for (RunControl *rc : runControls) {
-        if (rc->isRunning())
-            processes.push_back({rc->commandLine(), rc->applicationProcessHandle()});
-    }
-    return processes;
-}
-
 QList<RunControl *> ProjectExplorerPlugin::allRunControls()
 {
     return dd->m_outputPane.allRunControls();
@@ -3650,7 +3657,7 @@ void ProjectExplorerPluginPrivate::openTerminalHereWithRunEnv()
                                                                 currentNode->asProjectNode());
     QTC_ASSERT(runConfig, return);
 
-    const Runnable runnable = runConfig->runnable();
+    const ProcessRunData runnable = runConfig->runnable();
     IDevice::ConstPtr device = DeviceManager::deviceForPath(runnable.command.executable());
     if (!device)
         device = DeviceKitAspect::device(target->kit());

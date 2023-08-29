@@ -23,8 +23,8 @@ class AndroidBuildApkStep : public ProjectExplorer::AbstractProcessStep
 public:
     AndroidBuildApkStep(ProjectExplorer::BuildStepList *bc, Utils::Id id);
 
-    void fromMap(const QVariantMap &map) override;
-    void toMap(QVariantMap &map) const override;
+    void fromMap(const Utils::Store &map) override;
+    void toMap(Utils::Store &map) const override;
 
     // signing
     Utils::FilePath keystorePath() const;
@@ -37,14 +37,9 @@ public:
     bool signPackage() const;
     void setSignPackage(bool b);
 
-    bool buildAAB() const;
-    void setBuildAAB(bool aab);
-
-    bool openPackageLocation() const;
-    void setOpenPackageLocation(bool open);
-
-    bool verboseOutput() const;
-    void setVerboseOutput(bool verbose);
+    Utils::BoolAspect buildAAB{this};
+    Utils::BoolAspect openPackageLocation{this};
+    Utils::BoolAspect verboseOutput{this};
 
     bool addDebugger() const;
     void setAddDebugger(bool debug);
@@ -72,10 +67,7 @@ private:
     void reportWarningOrError(const QString &message, ProjectExplorer::Task::TaskType type);
     void updateBuildToolsVersionInJsonFile();
 
-    bool m_buildAAB = false;
     bool m_signPackage = false;
-    bool m_verbose = false;
-    bool m_openPackageLocation = false;
     bool m_openPackageLocationForRun = false;
     bool m_addDebugger = true;
     QString m_buildTargetSdk;

@@ -66,6 +66,8 @@ constexpr char typedClientsKey[] = "typedClients";
 constexpr char outlineSortedKey[] = "outlineSorted";
 constexpr char mimeType[] = "application/language.client.setting";
 
+using namespace Utils;
+
 namespace LanguageClient {
 
 class LanguageClientSettingsModel : public QAbstractListModel
@@ -120,16 +122,15 @@ public:
         applyCurrentSettings();
         LanguageClientManager::applySettings();
 
-        for (BaseSettings *setting : m_model.removed()) {
+        for (BaseSettings *setting : m_settings.removed()) {
             for (Client *client : LanguageClientManager::clientsForSetting(setting))
                 LanguageClientManager::shutdownClient(client);
         }
 
         int row = currentRow();
-        m_model.reset(LanguageClientManager::currentSettings());
+        m_settings.reset(LanguageClientManager::currentSettings());
         resetCurrentSettings(row);
     }
-
     void finish()
     {
         m_settings.reset(LanguageClientManager::currentSettings());
@@ -148,7 +149,6 @@ private:
 
     LanguageClientSettingsModel &m_settings;
     QSet<QString> &m_changedSettings;
-    LanguageClientSettingsModel m_model;
 };
 
 QMap<Utils::Id, ClientType> &clientTypes()
@@ -302,8 +302,6 @@ LanguageClientSettingsPage::LanguageClientSettingsPage()
 void LanguageClientSettingsPage::init()
 {
     m_model.reset(LanguageClientSettings::fromSettings(Core::ICore::settings()));
-    apply();
-    finish();
 }
 
 QList<BaseSettings *> LanguageClientSettingsPage::settings() const
@@ -565,9 +563,9 @@ Client *BaseSettings::createClient(BaseClientInterface *interface) const
     return new Client(interface);
 }
 
-QVariantMap BaseSettings::toMap() const
+Store BaseSettings::toMap() const
 {
-    QVariantMap map;
+    Store map;
     map.insert(typeIdKey, m_settingsTypeId.toSetting());
     map.insert(nameKey, m_name);
     map.insert(idKey, m_id);
@@ -580,7 +578,7 @@ QVariantMap BaseSettings::toMap() const
     return map;
 }
 
-void BaseSettings::fromMap(const QVariantMap &map)
+void BaseSettings::fromMap(const Store &map)
 {
     m_name = map[nameKey].toString();
     m_id = map.value(idKey, QUuid::createUuid().toString()).toString();
@@ -603,6 +601,7 @@ static LanguageClientSettingsPage &settingsPage()
 void LanguageClientSettings::init()
 {
     settingsPage().init();
+    LanguageClientManager::applySettings();
 }
 
 QList<BaseSettings *> LanguageClientSettings::fromSettings(QSettings *settingsIn)
@@ -613,8 +612,8 @@ QList<BaseSettings *> LanguageClientSettings::fromSettings(QSettings *settingsIn
     for (auto varList :
          {settingsIn->value(clientsKey).toList(), settingsIn->value(typedClientsKey).toList()}) {
         for (const QVariant &var : varList) {
-            const QMap<QString, QVariant> &map = var.toMap();
-            Utils::Id typeId = Utils::Id::fromSetting(map.value(typeIdKey));
+            const Store map = storeFromVariant(var);
+            Id typeId = Id::fromSetting(map.value(typeIdKey));
             if (!typeId.isValid())
                 typeId = Constants::LANGUAGECLIENT_STDIO_SETTINGS_ID;
             if (BaseSettings *settings = generateSettings(typeId)) {
@@ -660,7 +659,7 @@ void LanguageClientSettings::toSettings(QSettings *settings,
     settings->beginGroup(settingsGroupKey);
     auto transform = [](const QList<BaseSettings *> &settings) {
         return Utils::transform(settings, [](const BaseSettings *setting) {
-            return QVariant(setting->toMap());
+            return variantFromStore(setting->toMap());
         });
     };
     auto isStdioSetting = Utils::equal(&BaseSettings::m_settingsTypeId,
@@ -715,15 +714,15 @@ bool StdIOSettings::isValid() const
     return BaseSettings::isValid() && !m_executable.isEmpty();
 }
 
-QVariantMap StdIOSettings::toMap() const
+Store StdIOSettings::toMap() const
 {
-    QVariantMap map = BaseSettings::toMap();
+    Store map = BaseSettings::toMap();
     map.insert(executableKey, m_executable.toSettings());
     map.insert(argumentsKey, m_arguments);
     return map;
 }
 
-void StdIOSettings::fromMap(const QVariantMap &map)
+void StdIOSettings::fromMap(const Store &map)
 {
     BaseSettings::fromMap(map);
     m_executable = Utils::FilePath::fromSettings(map[executableKey]);
@@ -1031,9 +1030,16 @@ TextEditor::BaseTextEditor *jsonEditor()
 {
     using namespace TextEditor;
     using namespace Utils::Text;
-    BaseTextEditor *editor = PlainTextEditorFactory::createPlainTextEditor();
-    TextDocument *document = editor->textDocument();
-    TextEditorWidget *widget = editor->editorWidget();
+    BaseTextEditor *textEditor = nullptr;
+    for (Core::IEditorFactory *factory : Core::IEditorFactory::preferredEditorFactories("foo.json")) {
+        Core::IEditor *editor = factory->createEditor();
+        if (textEditor = qobject_cast<BaseTextEditor *>(editor); textEditor)
+            break;
+        delete editor;
+    }
+    QTC_ASSERT(textEditor, textEditor = PlainTextEditorFactory::createPlainTextEditor());
+    TextDocument *document = textEditor->textDocument();
+    TextEditorWidget *widget = textEditor->editorWidget();
     widget->configureGenericHighlighter(Utils::mimeTypeForName("application/json"));
     widget->setLineNumbersVisible(false);
     widget->setMarksVisible(false);
@@ -1064,7 +1070,7 @@ TextEditor::BaseTextEditor *jsonEditor()
         mark->setIcon(Utils::Icons::CODEMODEL_ERROR.icon());
         document->addMark(mark);
     });
-    return editor;
+    return textEditor;
 }
 
 } // namespace LanguageClient

@@ -4,7 +4,6 @@
 #include "perfprofilertool.h"
 
 #include "perfloaddialog.h"
-#include "perfprofilerplugin.h"
 #include "perfprofilertr.h"
 #include "perfsettings.h"
 #include "perftracepointdialog.h"
@@ -21,15 +20,15 @@
 #include <debugger/analyzer/analyzermanager.h>
 #include <debugger/debuggericons.h>
 
-#include <projectexplorer/kitinformation.h>
+#include <projectexplorer/kitaspects.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/projectexplorerconstants.h>
-#include <projectexplorer/runcontrol.h>
 #include <projectexplorer/projectmanager.h>
+#include <projectexplorer/runcontrol.h>
 #include <projectexplorer/target.h>
 
-#include <qtsupport/qtkitinformation.h>
+#include <qtsupport/qtkitaspect.h>
 
 #include <utils/algorithm.h>
 #include <utils/fancymainwindow.h>

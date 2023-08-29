@@ -16,6 +16,7 @@ static const char smartBackspaceBehaviorKey[] = "SmartBackspaceBehavior";
 static const char preferSingleLineCommentsKey[] = "PreferSingleLineComments";
 static const char groupPostfix[] = "TypingSettings";
 
+using namespace Utils;
 
 namespace TextEditor {
 
@@ -27,18 +28,18 @@ TypingSettings::TypingSettings():
 {
 }
 
-void TypingSettings::toSettings(const QString &category) const
+void TypingSettings::toSettings(const Key &category) const
 {
-    Utils::toSettings(QLatin1String(groupPostfix), category, Core::ICore::settings(), this);
+    Utils::toSettings(groupPostfix, category, Core::ICore::settings(), this);
 }
 
-void TypingSettings::fromSettings(const QString &category)
+void TypingSettings::fromSettings(const Key &category)
 {
     *this = TypingSettings(); // Assign defaults
-    Utils::fromSettings(QLatin1String(groupPostfix), category, Core::ICore::settings(), this);
+    Utils::fromSettings(groupPostfix, category, Core::ICore::settings(), this);
 }
 
-QVariantMap TypingSettings::toMap() const
+Store TypingSettings::toMap() const
 {
     return {
         {autoIndentKey, m_autoIndent},
@@ -48,7 +49,7 @@ QVariantMap TypingSettings::toMap() const
     };
 }
 
-void TypingSettings::fromMap(const QVariantMap &map)
+void TypingSettings::fromMap(const Store &map)
 {
     m_autoIndent = map.value(autoIndentKey, m_autoIndent).toBool();
     m_tabKeyBehavior = (TabKeyBehavior) map.value(tabKeyBehaviorKey, m_tabKeyBehavior).toInt();

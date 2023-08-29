@@ -11,7 +11,7 @@
 #include "debuggeractions.h"
 #include "debuggerengine.h"
 #include "debuggerinternalconstants.h"
-#include "debuggerkitinformation.h"
+#include "debuggerkitaspect.h"
 #include "debuggerrunconfigurationaspect.h"
 #include "breakhandler.h"
 #include "enginemanager.h"
@@ -49,7 +49,7 @@
 
 #include <qmldebug/qmldebugcommandlinearguments.h>
 
-#include <qtsupport/qtkitinformation.h>
+#include <qtsupport/qtkitaspect.h>
 
 #include <QTcpServer>
 #include <QTimer>
@@ -70,7 +70,7 @@ DebuggerEngine *createPdbEngine();
 DebuggerEngine *createQmlEngine();
 DebuggerEngine *createLldbEngine();
 DebuggerEngine *createUvscEngine();
-DebuggerEngine *createDapEngine();
+DebuggerEngine *createDapEngine(Utils::Id runMode = ProjectExplorer::Constants::NO_RUN_MODE);
 
 static QString noEngineMessage()
 {
@@ -354,7 +354,7 @@ void DebuggerRunTool::setAbi(const Abi &abi)
     m_runParameters.toolChainAbi = abi;
 }
 
-void DebuggerRunTool::setInferior(const Runnable &runnable)
+void DebuggerRunTool::setInferior(const ProcessRunData &runnable)
 {
     m_runParameters.inferior = runnable;
 }
@@ -483,6 +483,8 @@ void DebuggerRunTool::start()
 
     if (!m_engine) {
         if (runControl()->runMode() == ProjectExplorer::Constants::CMAKE_DEBUG_RUN_MODE)
+            m_engine = createDapEngine(runControl()->runMode());
+        else if (runControl()->runMode() == ProjectExplorer::Constants::DAP_GDB_DEBUG_RUN_MODE)
             m_engine = createDapEngine();
         else if (m_runParameters.isCppDebugging()) {
             switch (m_runParameters.cppEngineType) {
@@ -505,9 +507,6 @@ void DebuggerRunTool::start()
                 break;
             case UvscEngineType:
                 m_engine = createUvscEngine();
-                break;
-            case DapEngineType:
-                m_engine = createDapEngine();
                 break;
             default:
                 if (!m_runParameters.isQmlDebugging) {
@@ -856,6 +855,7 @@ DebuggerRunTool::DebuggerRunTool(RunControl *runControl, AllowTerminal allowTerm
     m_runParameters.macroExpander = runControl->macroExpander();
     m_runParameters.debugger = DebuggerKitAspect::runnable(kit);
     m_runParameters.cppEngineType = DebuggerKitAspect::engineType(kit);
+    m_runParameters.version = DebuggerKitAspect::version(kit);
 
     if (QtSupport::QtVersion *qtVersion = QtSupport::QtKitAspect::qtVersion(kit)) {
         m_runParameters.qtPackageSourceLocation = qtVersion->qtPackageSourcePath().toString();
@@ -882,7 +882,7 @@ DebuggerRunTool::DebuggerRunTool(RunControl *runControl, AllowTerminal allowTerm
         }
     }
 
-    Runnable inferior = runControl->runnable();
+    ProcessRunData inferior = runControl->runnable();
     // Normalize to work around QTBUG-17529 (QtDeclarative fails with 'File name case mismatch'...)
     inferior.workingDirectory = inferior.workingDirectory.normalizedPathName();
     m_runParameters.inferior = inferior;
@@ -1121,6 +1121,7 @@ DebuggerRunWorkerFactory::DebuggerRunWorkerFactory()
     setProduct<DebuggerRunTool>();
     addSupportedRunMode(ProjectExplorer::Constants::DEBUG_RUN_MODE);
     addSupportedRunMode(ProjectExplorer::Constants::CMAKE_DEBUG_RUN_MODE);
+    addSupportedRunMode(ProjectExplorer::Constants::DAP_GDB_DEBUG_RUN_MODE);
     addSupportedDeviceType(ProjectExplorer::Constants::DESKTOP_DEVICE_TYPE);
     addSupportedDeviceType("DockerDeviceType");
 }

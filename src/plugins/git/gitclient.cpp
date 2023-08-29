@@ -236,9 +236,7 @@ GitDiffEditorController::GitDiffEditorController(IDocument *document,
                                                  const QStringList &extraArgs)
     : GitBaseDiffEditorController(document)
 {
-    using namespace Tasking;
-
-    const TreeStorage<QString> diffInputStorage = inputStorage();
+    const TreeStorage<QString> diffInputStorage;
 
     const auto setupDiff = [=](Process &process) {
         process.setCodec(VcsBaseEditor::getCodec(workingDirectory(), {}));
@@ -250,9 +248,9 @@ GitDiffEditorController::GitDiffEditorController(IDocument *document,
     };
 
     const Group root {
-        Storage(diffInputStorage),
+        Tasking::Storage(diffInputStorage),
         ProcessTask(setupDiff, onDiffDone),
-        postProcessTask()
+        postProcessTask(diffInputStorage)
     };
     setReloadRecipe(root);
 }
@@ -296,15 +294,13 @@ FileListDiffController::FileListDiffController(IDocument *document, const QStrin
                                                const QStringList &unstagedFiles)
         : GitBaseDiffEditorController(document)
 {
-    using namespace Tasking;
-
     struct DiffStorage {
         QString m_stagedOutput;
         QString m_unstagedOutput;
     };
 
     const TreeStorage<DiffStorage> storage;
-    const TreeStorage<QString> diffInputStorage = inputStorage();
+    const TreeStorage<QString> diffInputStorage;
 
     const auto setupStaged = [this, stagedFiles](Process &process) {
         if (stagedFiles.isEmpty())
@@ -337,8 +333,8 @@ FileListDiffController::FileListDiffController(IDocument *document, const QStrin
     };
 
     const Group root {
-        Storage(storage),
-        Storage(diffInputStorage),
+        Tasking::Storage(storage),
+        Tasking::Storage(diffInputStorage),
         Group {
             parallel,
             continueOnDone,
@@ -346,7 +342,7 @@ FileListDiffController::FileListDiffController(IDocument *document, const QStrin
             ProcessTask(setupUnstaged, onUnstagedDone),
             onGroupDone(onStagingDone)
         },
-        postProcessTask()
+        postProcessTask(diffInputStorage)
     };
     setReloadRecipe(root);
 }
@@ -363,7 +359,6 @@ ShowController::ShowController(IDocument *document, const QString &id)
 {
     setDisplayName("Git Show");
     static const QString busyMessage = Tr::tr("<resolving>");
-    using namespace Tasking;
 
     struct ReloadStorage {
         bool m_postProcessDescription = false;
@@ -377,7 +372,7 @@ ShowController::ShowController(IDocument *document, const QString &id)
     };
 
     const TreeStorage<ReloadStorage> storage;
-    const TreeStorage<QString> diffInputStorage = inputStorage();
+    const TreeStorage<QString> diffInputStorage;
 
     const auto updateDescription = [this](const ReloadStorage &storage) {
         QString desc = storage.m_header;
@@ -534,8 +529,8 @@ ShowController::ShowController(IDocument *document, const QString &id)
     };
 
     const Group root {
-        Storage(storage),
-        Storage(diffInputStorage),
+        Tasking::Storage(storage),
+        Tasking::Storage(diffInputStorage),
         parallel,
         onGroupSetup([this] { setStartupFile(VcsBase::source(this->document()).toString()); }),
         Group {
@@ -552,7 +547,7 @@ ShowController::ShowController(IDocument *document, const QString &id)
         },
         Group {
             ProcessTask(setupDiff, onDiffDone),
-            postProcessTask()
+            postProcessTask(diffInputStorage)
         }
     };
     setReloadRecipe(root);

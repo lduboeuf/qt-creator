@@ -28,7 +28,7 @@ BoostTestFramework::BoostTestFramework()
 {
     setActive(true);
     setSettingsGroups("Autotest", "BoostTest");
-    setName(BoostTest::Constants::FRAMEWORK_NAME);
+    setId(BoostTest::Constants::FRAMEWORK_ID);
     setDisplayName(Tr::tr(BoostTest::Constants::FRAMEWORK_SETTINGS_CATEGORY));
     setPriority(BoostTest::Constants::FRAMEWORK_PRIORITY);
 
@@ -77,22 +77,22 @@ BoostTestFramework::BoostTestFramework()
     seed.setEnabler(&randomize);
 
     randomize.setSettingsKey("Randomize");
-    randomize.setLabelPlacement(BoolAspect::LabelPlacement::AtCheckBoxWithoutDummyLabel);
+    randomize.setLabelPlacement(BoolAspect::LabelPlacement::Compact);
     randomize.setLabelText(Tr::tr("Randomize"));
     randomize.setToolTip(Tr::tr("Randomize execution order."));
 
     systemErrors.setSettingsKey("SystemErrors");
-    systemErrors.setLabelPlacement(BoolAspect::LabelPlacement::AtCheckBoxWithoutDummyLabel);
+    systemErrors.setLabelPlacement(BoolAspect::LabelPlacement::Compact);
     systemErrors.setLabelText(Tr::tr("Catch system errors"));
     systemErrors.setToolTip(Tr::tr("Catch or ignore system errors."));
 
     fpExceptions.setSettingsKey("FPExceptions");
-    fpExceptions.setLabelPlacement(BoolAspect::LabelPlacement::AtCheckBoxWithoutDummyLabel);
+    fpExceptions.setLabelPlacement(BoolAspect::LabelPlacement::Compact);
     fpExceptions.setLabelText(Tr::tr("Floating point exceptions"));
     fpExceptions.setToolTip(Tr::tr("Enable floating point exception traps."));
 
     memLeaks.setSettingsKey("MemoryLeaks");
-    memLeaks.setLabelPlacement(BoolAspect::LabelPlacement::AtCheckBoxWithoutDummyLabel);
+    memLeaks.setLabelPlacement(BoolAspect::LabelPlacement::Compact);
     memLeaks.setDefaultValue(true);
     memLeaks.setLabelText(Tr::tr("Detect memory leaks"));
     memLeaks.setToolTip(Tr::tr("Enable memory leak detection."));
@@ -144,9 +144,8 @@ class BoostSettingsPage final : public Core::IOptionsPage
 public:
     BoostSettingsPage()
     {
-        setId(Id(Constants::SETTINGSPAGE_PREFIX).withSuffix(QString("%1.%2")
-            .arg(BoostTest::Constants::FRAMEWORK_PRIORITY)
-            .arg(BoostTest::Constants::FRAMEWORK_NAME)));
+        setId(Id(Constants::SETTINGSPAGE_PREFIX).withSuffix(QString("%1.Boost")
+            .arg(BoostTest::Constants::FRAMEWORK_PRIORITY)));
         setCategory(Constants::AUTOTEST_SETTINGS_CATEGORY);
         setDisplayName(Tr::tr(BoostTest::Constants::FRAMEWORK_SETTINGS_CATEGORY));
         setSettingsProvider([] { return &theBoostTestFramework() ; });

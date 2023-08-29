@@ -14,6 +14,8 @@
 static const char kGroupPostfix[] = "EditorManager";
 static const char kUtf8BomBehaviorKey[] = "Utf8BomBehavior";
 
+using namespace Utils;
+
 namespace TextEditor {
 
 ExtraEncodingSettings::ExtraEncodingSettings() : m_utf8BomSetting(OnlyKeep)
@@ -21,29 +23,29 @@ ExtraEncodingSettings::ExtraEncodingSettings() : m_utf8BomSetting(OnlyKeep)
 
 ExtraEncodingSettings::~ExtraEncodingSettings() = default;
 
-void ExtraEncodingSettings::toSettings(const QString &category) const
+void ExtraEncodingSettings::toSettings(const Key &category) const
 {
     Q_UNUSED(category)
 
-    Utils::toSettings(QLatin1String(kGroupPostfix), QString(), Core::ICore::settings(), this);
+    Utils::toSettings(kGroupPostfix, Key(), Core::ICore::settings(), this);
 }
 
-void ExtraEncodingSettings::fromSettings(const QString &category)
+void ExtraEncodingSettings::fromSettings(const Key &category)
 {
     Q_UNUSED(category)
 
     *this = ExtraEncodingSettings();
-    Utils::fromSettings(QLatin1String(kGroupPostfix), QString(), Core::ICore::settings(), this);
+    Utils::fromSettings(kGroupPostfix, Key(), Core::ICore::settings(), this);
 }
 
-QVariantMap ExtraEncodingSettings::toMap() const
+Store ExtraEncodingSettings::toMap() const
 {
     return {
         {kUtf8BomBehaviorKey, m_utf8BomSetting}
     };
 }
 
-void ExtraEncodingSettings::fromMap(const QVariantMap &map)
+void ExtraEncodingSettings::fromMap(const Store &map)
 {
     m_utf8BomSetting = (Utf8BomSetting)map.value(kUtf8BomBehaviorKey, m_utf8BomSetting).toInt();
 }

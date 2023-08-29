@@ -10,7 +10,7 @@
 #include "deployconfiguration.h"
 #include "devicesupport/devicemanager.h"
 #include "kit.h"
-#include "kitinformation.h"
+#include "kitaspects.h"
 #include "project.h"
 #include "projectexplorer.h"
 #include "projectexplorerconstants.h"
@@ -78,11 +78,7 @@ private:
     }
 };
 
-} // ProjectExplorer
-
-TASKING_DECLARE_TASK(ParserAwaiterTask, ProjectExplorer::ParserAwaiterTaskAdapter);
-
-namespace ProjectExplorer {
+using ParserAwaiterTask = CustomTask<ParserAwaiterTaskAdapter>;
 
 static QString msgProgress(int progress, int total)
 {

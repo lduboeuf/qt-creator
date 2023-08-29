@@ -3,12 +3,14 @@
 
 #include "texteditorplugin.h"
 
+#include "commentssettings.h"
 #include "findincurrentfile.h"
 #include "findinfiles.h"
 #include "findinopenfiles.h"
 #include "fontsettings.h"
 #include "highlighter.h"
 #include "icodestylepreferences.h"
+#include "jsoneditor.h"
 #include "linenumberfilter.h"
 #include "markdowneditor.h"
 #include "outlinefactory.h"
@@ -34,6 +36,8 @@
 #include <coreplugin/icore.h>
 
 #include <extensionsystem/pluginmanager.h>
+
+#include <projectexplorer/projectpanelfactory.h>
 
 #include <utils/fancylineedit.h>
 #include <utils/qtcassert.h>
@@ -73,6 +77,7 @@ public:
 
     PlainTextEditorFactory plainTextEditorFactory;
     MarkdownEditorFactory markdownEditorFactory;
+    JsonEditorFactory jsonEditorFactory;
 };
 
 static TextEditorPlugin *m_instance = nullptr;

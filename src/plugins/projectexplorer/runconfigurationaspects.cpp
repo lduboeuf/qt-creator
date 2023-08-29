@@ -6,7 +6,7 @@
 #include "devicesupport/devicemanager.h"
 #include "devicesupport/idevice.h"
 #include "environmentaspect.h"
-#include "kitinformation.h"
+#include "kitaspects.h"
 #include "projectexplorer.h"
 #include "projectexplorersettings.h"
 #include "projectexplorertr.h"
@@ -80,7 +80,7 @@ void TerminalAspect::addToLayout(LayoutItem &parent)
 /*!
     \reimp
 */
-void TerminalAspect::fromMap(const QVariantMap &map)
+void TerminalAspect::fromMap(const Store &map)
 {
     if (map.contains(settingsKey())) {
         m_useTerminal = map.value(settingsKey()).toBool();
@@ -96,7 +96,7 @@ void TerminalAspect::fromMap(const QVariantMap &map)
 /*!
     \reimp
 */
-void TerminalAspect::toMap(QVariantMap &data) const
+void TerminalAspect::toMap(Store &data) const
 {
     if (m_userSet)
         data.insert(settingsKey(), m_useTerminal);
@@ -214,7 +214,7 @@ void WorkingDirectoryAspect::resetPath()
 /*!
     \reimp
 */
-void WorkingDirectoryAspect::fromMap(const QVariantMap &map)
+void WorkingDirectoryAspect::fromMap(const Store &map)
 {
     m_workingDirectory = FilePath::fromString(map.value(settingsKey()).toString());
     m_defaultWorkingDirectory = FilePath::fromString(map.value(settingsKey() + ".default").toString());
@@ -229,7 +229,7 @@ void WorkingDirectoryAspect::fromMap(const QVariantMap &map)
 /*!
     \reimp
 */
-void WorkingDirectoryAspect::toMap(QVariantMap &data) const
+void WorkingDirectoryAspect::toMap(Store &data) const
 {
     const QString wd = m_workingDirectory == m_defaultWorkingDirectory
         ? QString() : m_workingDirectory.toString();
@@ -397,7 +397,7 @@ void ArgumentsAspect::resetArguments()
 /*!
     \reimp
 */
-void ArgumentsAspect::fromMap(const QVariantMap &map)
+void ArgumentsAspect::fromMap(const Store &map)
 {
     QVariant args = map.value(settingsKey());
     // Until 3.7 a QStringList was stored for Remote Linux
@@ -419,7 +419,7 @@ void ArgumentsAspect::fromMap(const QVariantMap &map)
 /*!
     \reimp
 */
-void ArgumentsAspect::toMap(QVariantMap &map) const
+void ArgumentsAspect::toMap(Store &map) const
 {
     saveToMap(map, m_arguments, QString(), settingsKey());
     saveToMap(map, m_multiLine, false, settingsKey() + ".multi");
@@ -564,7 +564,7 @@ void ExecutableAspect::setDeviceSelector(Target *target, ExecutionDeviceSelector
 
    \sa Utils::PathChooser::setHistoryCompleter()
 */
-void ExecutableAspect::setHistoryCompleter(const QString &historyCompleterKey)
+void ExecutableAspect::setHistoryCompleter(const Key &historyCompleterKey)
 {
     m_executable.setHistoryCompleter(historyCompleterKey);
     if (m_alternativeExecutable)
@@ -609,7 +609,7 @@ void ExecutableAspect::setReadOnly(bool readOnly)
 
    \sa Utils::StringAspect::makeCheckable()
 */
-void ExecutableAspect::makeOverridable(const QString &overridingKey, const QString &useOverridableKey)
+void ExecutableAspect::makeOverridable(const Key &overridingKey, const Key &useOverridableKey)
 {
     QTC_ASSERT(!m_alternativeExecutable, return);
     m_alternativeExecutable = new FilePathAspect;
@@ -684,7 +684,7 @@ void ExecutableAspect::setExecutable(const FilePath &executable)
 /*!
     Sets the settings key to \a key.
 */
-void ExecutableAspect::setSettingsKey(const QString &key)
+void ExecutableAspect::setSettingsKey(const Key &key)
 {
     BaseAspect::setSettingsKey(key);
     m_executable.setSettingsKey(key);
@@ -693,7 +693,7 @@ void ExecutableAspect::setSettingsKey(const QString &key)
 /*!
   \reimp
 */
-void ExecutableAspect::fromMap(const QVariantMap &map)
+void ExecutableAspect::fromMap(const Store &map)
 {
     m_executable.fromMap(map);
     if (m_alternativeExecutable)
@@ -703,7 +703,7 @@ void ExecutableAspect::fromMap(const QVariantMap &map)
 /*!
    \reimp
 */
-void ExecutableAspect::toMap(QVariantMap &map) const
+void ExecutableAspect::toMap(Store &map) const
 {
     m_executable.toMap(map);
     if (m_alternativeExecutable)
@@ -809,6 +809,8 @@ Interpreter InterpreterAspect::currentInterpreter() const
 
 void InterpreterAspect::updateInterpreters(const QList<Interpreter> &interpreters)
 {
+    if (m_interpreters == interpreters)
+        return;
     m_interpreters = interpreters;
     if (m_comboBox)
         updateComboBox();
@@ -816,9 +818,11 @@ void InterpreterAspect::updateInterpreters(const QList<Interpreter> &interpreter
 
 void InterpreterAspect::setDefaultInterpreter(const Interpreter &interpreter)
 {
+    if (m_defaultId == interpreter.id)
+        return;
     m_defaultId = interpreter.id;
     if (m_currentId.isEmpty())
-        m_currentId = m_defaultId;
+        setCurrentInterpreter(interpreter);
 }
 
 void InterpreterAspect::setCurrentInterpreter(const Interpreter &interpreter)
@@ -829,17 +833,16 @@ void InterpreterAspect::setCurrentInterpreter(const Interpreter &interpreter)
             return;
         m_comboBox->setCurrentIndex(index);
     } else {
-        m_currentId = interpreter.id;
+        setCurrentInterpreterId(interpreter.id);
     }
-    emit changed();
 }
 
-void InterpreterAspect::fromMap(const QVariantMap &map)
+void InterpreterAspect::fromMap(const Store &map)
 {
-    m_currentId = map.value(settingsKey(), m_defaultId).toString();
+    setCurrentInterpreterId(map.value(settingsKey(), m_defaultId).toString());
 }
 
-void InterpreterAspect::toMap(QVariantMap &map) const
+void InterpreterAspect::toMap(Store &map) const
 {
     if (m_currentId != m_defaultId)
         saveToMap(map, m_currentId, QString(), settingsKey());
@@ -862,15 +865,22 @@ void InterpreterAspect::addToLayout(LayoutItem &builder)
     builder.addItems({Tr::tr("Interpreter:"), m_comboBox.data(), manageButton});
 }
 
+void InterpreterAspect::setCurrentInterpreterId(const QString &id)
+{
+    if (id == m_currentId)
+        return;
+    m_currentId = id;
+    emit changed();
+}
+
 void InterpreterAspect::updateCurrentInterpreter()
 {
     const int index = m_comboBox->currentIndex();
     if (index < 0)
         return;
     QTC_ASSERT(index < m_interpreters.size(), return);
-    m_currentId = m_interpreters[index].id;
     m_comboBox->setToolTip(m_interpreters[index].command.toUserOutput());
-    emit changed();
+    setCurrentInterpreterId(m_interpreters[index].id);
 }
 
 void InterpreterAspect::updateComboBox()

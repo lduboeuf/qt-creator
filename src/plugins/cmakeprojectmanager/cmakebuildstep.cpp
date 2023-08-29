@@ -5,7 +5,7 @@
 
 #include "cmakebuildconfiguration.h"
 #include "cmakebuildsystem.h"
-#include "cmakekitinformation.h"
+#include "cmakekitaspect.h"
 #include "cmakeparser.h"
 #include "cmakeproject.h"
 #include "cmakeprojectconstants.h"
@@ -13,6 +13,8 @@
 #include "cmaketool.h"
 
 #include <android/androidconstants.h>
+
+#include <baremetal/baremetalconstants.h>
 
 #include <ios/iosconstants.h>
 
@@ -23,7 +25,7 @@
 #include <projectexplorer/devicesupport/idevice.h>
 #include <projectexplorer/environmentwidget.h>
 #include <projectexplorer/gnumakeparser.h>
-#include <projectexplorer/kitinformation.h>
+#include <projectexplorer/kitaspects.h>
 #include <projectexplorer/processparameters.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/projectexplorer.h>
@@ -44,6 +46,7 @@
 
 using namespace Core;
 using namespace ProjectExplorer;
+using namespace Tasking;
 using namespace Utils;
 
 namespace CMakeProjectManager::Internal {
@@ -59,7 +62,7 @@ const char CLEAR_SYSTEM_ENVIRONMENT_KEY[] = "CMakeProjectManager.MakeStep.ClearS
 const char USER_ENVIRONMENT_CHANGES_KEY[] = "CMakeProjectManager.MakeStep.UserEnvironmentChanges";
 const char BUILD_PRESET_KEY[] = "CMakeProjectManager.MakeStep.BuildPreset";
 
-class ProjectParserTaskAdapter : public Tasking::TaskAdapter<QPointer<Target>>
+class ProjectParserTaskAdapter : public TaskAdapter<QPointer<Target>>
 {
 public:
     void start() final {
@@ -72,11 +75,7 @@ public:
     }
 };
 
-} // namespace CMakeProjectManager::Internal
-
-TASKING_DECLARE_TASK(ProjectParserTask, CMakeProjectManager::Internal::ProjectParserTaskAdapter);
-
-namespace CMakeProjectManager::Internal {
+using ProjectParserTask = CustomTask<ProjectParserTaskAdapter>;
 
 class CmakeProgressParser : public Utils::OutputLineParser
 {
@@ -205,6 +204,8 @@ static bool supportsStageForInstallation(const Kit *kit)
     return runDevice->id() != buildDevice->id()
            && runDevice->type() != Android::Constants::ANDROID_DEVICE_TYPE
            && runDevice->type() != Ios::Constants::IOS_DEVICE_TYPE
+           && runDevice->type() != Ios::Constants::IOS_SIMULATOR_TYPE
+           && runDevice->type() != BareMetal::Constants::BareMetalOsType
            && runDevice->type() != WebAssembly::Constants::WEBASSEMBLY_DEVICE_TYPE;
 }
 
@@ -225,7 +226,7 @@ CMakeBuildStep::CMakeBuildStep(BuildStepList *bsl, Id id) :
 
     stagingDir.setSettingsKey(STAGING_DIR_KEY);
     stagingDir.setLabelText(Tr::tr("Staging directory:"));
-    stagingDir.setDefaultValue(FilePath::fromUserInput(initialStagingDir(kit())));
+    stagingDir.setDefaultValue(initialStagingDir(kit()));
 
     Kit *kit = buildConfiguration()->kit();
     if (CMakeBuildConfiguration::isIos(kit)) {
@@ -272,27 +273,26 @@ CMakeBuildStep::CMakeBuildStep(BuildStepList *bsl, Id id) :
             this, &CMakeBuildStep::updateBuildTargetsModel);
 }
 
-void CMakeBuildStep::toMap(QVariantMap &map) const
+void CMakeBuildStep::toMap(Utils::Store &map) const
 {
     CMakeAbstractProcessStep::toMap(map);
     map.insert(BUILD_TARGETS_KEY, m_buildTargets);
-    map.insert(QLatin1String(CLEAR_SYSTEM_ENVIRONMENT_KEY), m_clearSystemEnvironment);
-    map.insert(QLatin1String(USER_ENVIRONMENT_CHANGES_KEY), EnvironmentItem::toStringList(m_userEnvironmentChanges));
-    map.insert(QLatin1String(BUILD_PRESET_KEY), m_buildPreset);
+    map.insert(CLEAR_SYSTEM_ENVIRONMENT_KEY, m_clearSystemEnvironment);
+    map.insert(USER_ENVIRONMENT_CHANGES_KEY, EnvironmentItem::toStringList(m_userEnvironmentChanges));
+    map.insert(BUILD_PRESET_KEY, m_buildPreset);
 }
 
-void CMakeBuildStep::fromMap(const QVariantMap &map)
+void CMakeBuildStep::fromMap(const Utils::Store &map)
 {
     setBuildTargets(map.value(BUILD_TARGETS_KEY).toStringList());
 
-    m_clearSystemEnvironment = map.value(QLatin1String(CLEAR_SYSTEM_ENVIRONMENT_KEY))
-                                   .toBool();
+    m_clearSystemEnvironment = map.value(CLEAR_SYSTEM_ENVIRONMENT_KEY).toBool();
     m_userEnvironmentChanges = EnvironmentItem::fromStringList(
-        map.value(QLatin1String(USER_ENVIRONMENT_CHANGES_KEY)).toStringList());
+        map.value(USER_ENVIRONMENT_CHANGES_KEY).toStringList());
 
     updateAndEmitEnvironmentChanged();
 
-    m_buildPreset = map.value(QLatin1String(BUILD_PRESET_KEY)).toString();
+    m_buildPreset = map.value(BUILD_PRESET_KEY).toString();
 
     BuildStep::fromMap(map);
 }
@@ -345,10 +345,8 @@ void CMakeBuildStep::setupOutputFormatter(Utils::OutputFormatter *formatter)
     CMakeAbstractProcessStep::setupOutputFormatter(formatter);
 }
 
-Tasking::GroupItem CMakeBuildStep::runRecipe()
+GroupItem CMakeBuildStep::runRecipe()
 {
-    using namespace Tasking;
-
     const auto onParserSetup = [this](QPointer<Target> &parseTarget) {
         // Make sure CMake state was written to disk before trying to build:
         auto bs = qobject_cast<CMakeBuildSystem *>(buildSystem());

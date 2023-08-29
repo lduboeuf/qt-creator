@@ -32,7 +32,7 @@ GTestFramework::GTestFramework()
 {
     setActive(true);
     setSettingsGroups("Autotest", "GTest");
-    setName(GTest::Constants::FRAMEWORK_NAME);
+    setId(GTest::Constants::FRAMEWORK_ID);
     setDisplayName(Tr::tr(GTest::Constants::FRAMEWORK_SETTINGS_CATEGORY));
     setPriority(GTest::Constants::FRAMEWORK_PRIORITY);
 
@@ -64,29 +64,29 @@ GTestFramework::GTestFramework()
 
     runDisabled.setSettingsKey("RunDisabled");
     runDisabled.setLabelText(Tr::tr("Run disabled tests"));
-    runDisabled.setLabelPlacement(BoolAspect::LabelPlacement::AtCheckBoxWithoutDummyLabel);
+    runDisabled.setLabelPlacement(BoolAspect::LabelPlacement::Compact);
     runDisabled.setToolTip(Tr::tr("Executes disabled tests when performing a test run."));
 
     shuffle.setSettingsKey("Shuffle");
     shuffle.setLabelText(Tr::tr("Shuffle tests"));
-    shuffle.setLabelPlacement(BoolAspect::LabelPlacement::AtCheckBoxWithoutDummyLabel);
+    shuffle.setLabelPlacement(BoolAspect::LabelPlacement::Compact);
     shuffle.setToolTip(Tr::tr("Shuffles tests automatically on every iteration by the given seed."));
 
     repeat.setSettingsKey("Repeat");
     repeat.setLabelText(Tr::tr("Repeat tests"));
-    repeat.setLabelPlacement(BoolAspect::LabelPlacement::AtCheckBoxWithoutDummyLabel);
+    repeat.setLabelPlacement(BoolAspect::LabelPlacement::Compact);
     repeat.setToolTip(Tr::tr("Repeats a test run (you might be required to increase the timeout to "
                              "avoid canceling the tests)."));
 
     throwOnFailure.setSettingsKey("ThrowOnFailure");
     throwOnFailure.setLabelText(Tr::tr("Throw on failure"));
-    throwOnFailure.setLabelPlacement(BoolAspect::LabelPlacement::AtCheckBoxWithoutDummyLabel);
+    throwOnFailure.setLabelPlacement(BoolAspect::LabelPlacement::Compact);
     throwOnFailure.setToolTip(Tr::tr("Turns assertion failures into C++ exceptions."));
 
     breakOnFailure.setSettingsKey("BreakOnFailure");
     breakOnFailure.setDefaultValue(true);
     breakOnFailure.setLabelText(Tr::tr("Break on failure while debugging"));
-    breakOnFailure.setLabelPlacement(BoolAspect::LabelPlacement::AtCheckBoxWithoutDummyLabel);
+    breakOnFailure.setLabelPlacement(BoolAspect::LabelPlacement::Compact);
     breakOnFailure.setToolTip(Tr::tr("Turns failures into debugger breakpoints."));
 
     groupMode.setSettingsKey("GroupMode");
@@ -130,8 +130,7 @@ GTestFramework::GTestFramework()
                                == GTest::Constants::GTestFilter);
     });
     connect(this, &AspectContainer::applied, this, [] {
-        Id id = Id(Constants::FRAMEWORK_PREFIX).withSuffix(GTest::Constants::FRAMEWORK_NAME);
-        TestTreeModel::instance()->rebuild({id});
+        TestTreeModel::instance()->rebuild({GTest::Constants::FRAMEWORK_ID});
     });
 }
 
@@ -178,9 +177,8 @@ class GTestSettingsPage final : public Core::IOptionsPage
 public:
     GTestSettingsPage()
     {
-        setId(Id(Constants::SETTINGSPAGE_PREFIX).withSuffix(QString("%1.%2")
-            .arg(GTest::Constants::FRAMEWORK_PRIORITY)
-            .arg(GTest::Constants::FRAMEWORK_NAME)));
+        setId(Id(Constants::SETTINGSPAGE_PREFIX).withSuffix(QString("%1.GTest")
+            .arg(GTest::Constants::FRAMEWORK_PRIORITY)));
         setCategory(Constants::AUTOTEST_SETTINGS_CATEGORY);
         setDisplayName(Tr::tr(GTest::Constants::FRAMEWORK_SETTINGS_CATEGORY));
         setSettingsProvider([] { return &theGTestFramework(); });

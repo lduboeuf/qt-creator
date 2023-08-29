@@ -7,7 +7,7 @@
 #include "cmakebuildconfiguration.h"
 #include "cmakebuildstep.h"
 #include "cmakebuildtarget.h"
-#include "cmakekitinformation.h"
+#include "cmakekitaspect.h"
 #include "cmakeproject.h"
 #include "cmakeprojectconstants.h"
 #include "cmakeprojectmanagertr.h"
@@ -26,7 +26,7 @@
 #include <cppeditor/cppprojectupdater.h>
 
 #include <projectexplorer/extracompiler.h>
-#include <projectexplorer/kitinformation.h>
+#include <projectexplorer/kitaspects.h>
 #include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/target.h>
@@ -36,9 +36,11 @@
 #include <texteditor/textdocument.h>
 
 #include <qmljs/qmljsmodelmanagerinterface.h>
+
 #include <qmljstools/qmljstoolsconstants.h>
+
 #include <qtsupport/qtcppkitinfo.h>
-#include <qtsupport/qtkitinformation.h>
+#include <qtsupport/qtsupportconstants.h>
 
 #include <utils/algorithm.h>
 #include <utils/checkablemessagebox.h>
@@ -191,11 +193,15 @@ void CMakeBuildSystem::triggerParsing()
     // active code model updater when the next one will be triggered.
     m_cppCodeModelUpdater->cancel();
 
+    const CMakeTool *tool = m_parameters.cmakeTool();
+    CMakeTool::Version version = tool ? tool->version() : CMakeTool::Version();
+    const bool isDebuggable = (version.major == 3 && version.minor >= 27) || version.major > 3;
+
     qCDebug(cmakeBuildSystemLog) << "Asking reader to parse";
     m_reader.parse(reparseParameters & REPARSE_FORCE_CMAKE_RUN,
                    reparseParameters & REPARSE_FORCE_INITIAL_CONFIGURATION,
                    reparseParameters & REPARSE_FORCE_EXTRA_CONFIGURATION,
-                   reparseParameters & REPARSE_DEBUG);
+                   (reparseParameters & REPARSE_DEBUG) && isDebuggable);
 }
 
 void CMakeBuildSystem::requestDebugging()
@@ -661,9 +667,31 @@ FilePaths CMakeBuildSystem::filesGeneratedFrom(const FilePath &sourceFile) const
     FilePath generatedFilePath = buildConfiguration()->buildDirectory().resolvePath(relativePath);
 
     if (sourceFile.suffix() == "ui") {
-        generatedFilePath = generatedFilePath
-                                .pathAppended("ui_" + sourceFile.completeBaseName() + ".h");
-        return {generatedFilePath};
+        const QString generatedFileName = "ui_" + sourceFile.completeBaseName() + ".h";
+
+        auto targetNode = this->project()->nodeForFilePath(sourceFile);
+        while (!dynamic_cast<const CMakeTargetNode *>(targetNode))
+            targetNode = targetNode->parentFolderNode();
+
+        FilePaths generatedFilePaths;
+        if (targetNode) {
+            const QString autogenSignature = targetNode->buildKey() + "_autogen/include";
+
+            // If AUTOUIC reports the generated header file name, use that path
+            generatedFilePaths = this->project()->files(
+                [autogenSignature, generatedFileName](const Node *n) {
+                    const FilePath filePath = n->filePath();
+                    if (!filePath.contains(autogenSignature))
+                        return false;
+
+                    return Project::GeneratedFiles(n) && filePath.endsWith(generatedFileName);
+                });
+        }
+
+        if (generatedFilePaths.empty())
+            generatedFilePaths = {generatedFilePath.pathAppended(generatedFileName)};
+
+        return generatedFilePaths;
     }
     if (sourceFile.suffix() == "scxml") {
         generatedFilePath = generatedFilePath.pathAppended(sourceFile.completeBaseName());
@@ -991,7 +1019,7 @@ void CMakeBuildSystem::updateProjectData()
 
     {
         const bool mergedHeaderPathsAndQmlImportPaths = kit()->value(
-                    QtSupport::KitHasMergedHeaderPathsWithQmlImportPaths::id(), false).toBool();
+                    QtSupport::Constants::KIT_HAS_MERGED_HEADER_PATHS_WITH_QML_IMPORT_PATHS, false).toBool();
         QStringList extraHeaderPaths;
         QList<QByteArray> moduleMappings;
         for (const RawProjectPart &rpp : std::as_const(rpps)) {
@@ -1549,7 +1577,7 @@ void CMakeBuildSystem::updateQmlJSCodeModel(const QStringList &extraHeaderPaths,
 
     const CMakeConfig &cm = configurationFromCMake();
     addImports(cm.stringValueOf("QML_IMPORT_PATH"));
-    addImports(kit()->value(QtSupport::KitQmlImportPath::id()).toString());
+    addImports(kit()->value(QtSupport::Constants::KIT_QML_IMPORT_PATH).toString());
 
     for (const QString &extraHeaderPath : extraHeaderPaths)
         projectInfo.importPaths.maybeInsert(FilePath::fromString(extraHeaderPath),

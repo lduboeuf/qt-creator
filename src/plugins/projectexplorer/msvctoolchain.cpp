@@ -978,29 +978,28 @@ Abis MsvcToolChain::supportedAbis() const
     return abis;
 }
 
-void MsvcToolChain::toMap(QVariantMap &data) const
+void MsvcToolChain::toMap(Store &data) const
 {
     ToolChain::toMap(data);
-    data.insert(QLatin1String(varsBatKeyC), m_vcvarsBat);
+    data.insert(varsBatKeyC, m_vcvarsBat);
     if (!m_varsBatArg.isEmpty())
-        data.insert(QLatin1String(varsBatArgKeyC), m_varsBatArg);
-    Utils::EnvironmentItem::sort(&m_environmentModifications);
-    data.insert(QLatin1String(environModsKeyC),
-                Utils::EnvironmentItem::toVariantList(m_environmentModifications));
+        data.insert(varsBatArgKeyC, m_varsBatArg);
+    EnvironmentItem::sort(&m_environmentModifications);
+    data.insert(environModsKeyC, EnvironmentItem::toVariantList(m_environmentModifications));
 }
 
-void MsvcToolChain::fromMap(const QVariantMap &data)
+void MsvcToolChain::fromMap(const Store &data)
 {
     ToolChain::fromMap(data);
     if (hasError()) {
         g_availableMsvcToolchains.removeOne(this);
         return;
     }
-    m_vcvarsBat = QDir::fromNativeSeparators(data.value(QLatin1String(varsBatKeyC)).toString());
-    m_varsBatArg = data.value(QLatin1String(varsBatArgKeyC)).toString();
+    m_vcvarsBat = QDir::fromNativeSeparators(data.value(varsBatKeyC).toString());
+    m_varsBatArg = data.value(varsBatArgKeyC).toString();
 
-    m_environmentModifications = Utils::EnvironmentItem::itemsFromVariantList(
-        data.value(QLatin1String(environModsKeyC)).toList());
+    m_environmentModifications = EnvironmentItem::itemsFromVariantList(
+        data.value(environModsKeyC).toList());
     rescanForCompiler();
 
     initEnvModWatcher(Utils::asyncRun(envModThreadPool(), &MsvcToolChain::environmentModifications,
@@ -1722,18 +1721,18 @@ QList<OutputLineParser *> ClangClToolChain::createOutputParsers() const
     return {new ClangClParser};
 }
 
-static inline QString llvmDirKey()
+static Key llvmDirKey()
 {
-    return QStringLiteral("ProjectExplorer.ClangClToolChain.LlvmDir");
+    return "ProjectExplorer.ClangClToolChain.LlvmDir";
 }
 
-void ClangClToolChain::toMap(QVariantMap &data) const
+void ClangClToolChain::toMap(Store &data) const
 {
     MsvcToolChain::toMap(data);
     data.insert(llvmDirKey(), m_clangPath.toString());
 }
 
-void ClangClToolChain::fromMap(const QVariantMap &data)
+void ClangClToolChain::fromMap(const Store &data)
 {
     MsvcToolChain::fromMap(data);
     if (hasError())

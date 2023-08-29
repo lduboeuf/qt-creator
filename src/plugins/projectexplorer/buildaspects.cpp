@@ -6,7 +6,7 @@
 #include "buildconfiguration.h"
 #include "buildpropertiessettings.h"
 #include "devicesupport/idevice.h"
-#include "kitinformation.h"
+#include "kitaspects.h"
 #include "projectexplorerconstants.h"
 #include "projectexplorertr.h"
 #include "target.h"
@@ -72,7 +72,7 @@ BuildDirectoryAspect::~BuildDirectoryAspect()
 void BuildDirectoryAspect::allowInSourceBuilds(const FilePath &sourceDir)
 {
     d->sourceDir = sourceDir;
-    makeCheckable(CheckBoxPlacement::Top, Tr::tr("Shadow build:"), QString());
+    makeCheckable(CheckBoxPlacement::Top, Tr::tr("Shadow build:"), Key());
     setChecked(d->sourceDir != expandedValue());
 }
 
@@ -87,7 +87,7 @@ void BuildDirectoryAspect::setProblem(const QString &description)
     updateProblemLabel();
 }
 
-void BuildDirectoryAspect::toMap(QVariantMap &map) const
+void BuildDirectoryAspect::toMap(Store &map) const
 {
     FilePathAspect::toMap(map);
     if (!d->sourceDir.isEmpty()) {
@@ -96,7 +96,7 @@ void BuildDirectoryAspect::toMap(QVariantMap &map) const
     }
 }
 
-void BuildDirectoryAspect::fromMap(const QVariantMap &map)
+void BuildDirectoryAspect::fromMap(const Store &map)
 {
     FilePathAspect::fromMap(map);
     if (!d->sourceDir.isEmpty()) {

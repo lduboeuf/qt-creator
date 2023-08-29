@@ -17,7 +17,7 @@
 #include <projectexplorer/projectexplorer.h>
 #include <qmljstools/qmljstoolsconstants.h>
 #include <qtsupport/baseqtversion.h>
-#include <qtsupport/qtkitinformation.h>
+#include <qtsupport/qtkitaspect.h>
 #include <utils/process.h>
 #include <utils/qtcassert.h>
 
@@ -174,8 +174,8 @@ void QbsProfileManager::addProfileFromKit(const ProjectExplorer::Kit *k)
 
 void QbsProfileManager::handleKitUpdate(ProjectExplorer::Kit *kit)
 {
-    m_kitsToBeSetupForQbs.removeOne(kit);
-    addProfileFromKit(kit);
+    if (!m_kitsToBeSetupForQbs.contains(kit))
+        addProfileFromKit(kit);
 }
 
 void QbsProfileManager::handleKitRemoval(ProjectExplorer::Kit *kit)

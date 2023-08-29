@@ -5,7 +5,7 @@
 
 #include "buildsteplist.h"
 #include "deploymentdataview.h"
-#include "kitinformation.h"
+#include "kitaspects.h"
 #include "project.h"
 #include "projectexplorerconstants.h"
 #include "projectexplorertr.h"
@@ -50,32 +50,32 @@ QWidget *DeployConfiguration::createConfigWidget()
     return m_configWidgetCreator(this);
 }
 
-void DeployConfiguration::toMap(QVariantMap &map) const
+void DeployConfiguration::toMap(Store &map) const
 {
     ProjectConfiguration::toMap(map);
-    map.insert(QLatin1String(BUILD_STEP_LIST_COUNT), 1);
-    map.insert(QLatin1String(BUILD_STEP_LIST_PREFIX) + QLatin1Char('0'), m_stepList.toMap());
+    map.insert(BUILD_STEP_LIST_COUNT, 1);
+    map.insert(Key(BUILD_STEP_LIST_PREFIX) + '0', variantFromStore(m_stepList.toMap()));
     map.insert(USES_DEPLOYMENT_DATA, usesCustomDeploymentData());
-    QVariantMap deployData;
+    Store deployData;
     for (int i = 0; i < m_customDeploymentData.fileCount(); ++i) {
         const DeployableFile &f = m_customDeploymentData.fileAt(i);
-        deployData.insert(f.localFilePath().toString(), f.remoteDirectory());
+        deployData.insert(keyFromString(f.localFilePath().toString()), f.remoteDirectory());
     }
-    map.insert(DEPLOYMENT_DATA, deployData);
+    map.insert(DEPLOYMENT_DATA, variantFromStore(deployData));
 }
 
-void DeployConfiguration::fromMap(const QVariantMap &map)
+void DeployConfiguration::fromMap(const Store &map)
 {
     ProjectConfiguration::fromMap(map);
     if (hasError())
         return;
 
-    int maxI = map.value(QLatin1String(BUILD_STEP_LIST_COUNT), 0).toInt();
+    int maxI = map.value(BUILD_STEP_LIST_COUNT, 0).toInt();
     if (maxI != 1) {
         reportError();
         return;
     }
-    QVariantMap data = map.value(QLatin1String(BUILD_STEP_LIST_PREFIX) + QLatin1Char('0')).toMap();
+    Store data = storeFromVariant(map.value(Key(BUILD_STEP_LIST_PREFIX) + '0'));
     if (!data.isEmpty()) {
         m_stepList.clear();
         if (!m_stepList.fromMap(data)) {
@@ -91,9 +91,9 @@ void DeployConfiguration::fromMap(const QVariantMap &map)
     }
 
     m_usesCustomDeploymentData = map.value(USES_DEPLOYMENT_DATA, false).toBool();
-    const QVariantMap deployData = map.value(DEPLOYMENT_DATA).toMap();
+    const Store deployData = storeFromVariant(map.value(DEPLOYMENT_DATA));
     for (auto it = deployData.begin(); it != deployData.end(); ++it)
-        m_customDeploymentData.addFile(FilePath::fromString(it.key()), it.value().toString());
+        m_customDeploymentData.addFile(FilePath::fromString(stringFromKey(it.key())), it.value().toString());
 }
 
 bool DeployConfiguration::isActive() const
@@ -188,12 +188,12 @@ DeployConfiguration *DeployConfigurationFactory::create(Target *parent)
 DeployConfiguration *DeployConfigurationFactory::clone(Target *parent,
                                                        const DeployConfiguration *source)
 {
-    QVariantMap map;
+    Store map;
     source->toMap(map);
     return restore(parent, map);
 }
 
-DeployConfiguration *DeployConfigurationFactory::restore(Target *parent, const QVariantMap &map)
+DeployConfiguration *DeployConfigurationFactory::restore(Target *parent, const Store &map)
 {
     const Id id = idFromMap(map);
     DeployConfigurationFactory *factory = Utils::findOrDefault(g_deployConfigurationFactories,
@@ -243,18 +243,6 @@ void DeployConfigurationFactory::setSupportedProjectType(Utils::Id id)
 void DeployConfigurationFactory::addInitialStep(Utils::Id stepId, const std::function<bool (Target *)> &condition)
 {
     m_initialSteps.append({stepId, condition});
-}
-
-///
-// DefaultDeployConfigurationFactory
-///
-
-DefaultDeployConfigurationFactory::DefaultDeployConfigurationFactory()
-{
-    setConfigBaseId("ProjectExplorer.DefaultDeployConfiguration");
-    addSupportedTargetDeviceType(Constants::DESKTOP_DEVICE_TYPE);
-    //: Display name of the default deploy configuration
-    setDefaultDisplayName(Tr::tr("Deploy Configuration"));
 }
 
 } // namespace ProjectExplorer

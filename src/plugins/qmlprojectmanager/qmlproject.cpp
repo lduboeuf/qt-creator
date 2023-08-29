@@ -4,7 +4,7 @@
 #include "qmlproject.h"
 
 #include <qtsupport/baseqtversion.h>
-#include <qtsupport/qtkitinformation.h>
+#include <qtsupport/qtkitaspect.h>
 #include <qtsupport/qtsupportconstants.h>
 
 #include <QTimer>
@@ -40,8 +40,10 @@
 
 using namespace Core;
 using namespace ProjectExplorer;
+using namespace Utils;
 
 namespace QmlProjectManager {
+
 QmlProject::QmlProject(const Utils::FilePath &fileName)
     : Project(QString::fromLatin1(Constants::QMLPROJECT_MIMETYPE), fileName)
 {
@@ -87,7 +89,7 @@ void QmlProject::parsingFinished(const Target *target, bool success)
         openFile(fileToOpen);
 }
 
-Project::RestoreResult QmlProject::fromMap(const QVariantMap &map, QString *errorMessage)
+Project::RestoreResult QmlProject::fromMap(const Store &map, QString *errorMessage)
 {
     RestoreResult result = Project::fromMap(map, errorMessage);
     if (result != RestoreResult::Ok)

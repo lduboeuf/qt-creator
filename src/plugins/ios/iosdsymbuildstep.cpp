@@ -12,14 +12,14 @@
 
 #include <projectexplorer/buildconfiguration.h>
 #include <projectexplorer/buildsteplist.h>
-#include <projectexplorer/kitinformation.h>
+#include <projectexplorer/kitaspects.h>
 #include <projectexplorer/processparameters.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/target.h>
 
-#include <qtsupport/qtkitinformation.h>
+#include <qtsupport/qtkitaspect.h>
 #include <qtsupport/qtparser.h>
 
 #include <utils/process.h>
@@ -59,8 +59,8 @@ public:
 
 private:
     void setupOutputFormatter(OutputFormatter *formatter) override;
-    void toMap(QVariantMap &map) const override;
-    void fromMap(const QVariantMap &map) override;
+    void toMap(Store &map) const override;
+    void fromMap(const Store &map) override;
 
     QStringList defaultCleanCmdList() const;
     QStringList defaultCmdList() const;
@@ -83,26 +83,23 @@ IosDsymBuildStep::IosDsymBuildStep(BuildStepList *parent, Id id) :
     setIgnoreReturnValue(m_clean);
 }
 
-void IosDsymBuildStep::toMap(QVariantMap &map) const
+void IosDsymBuildStep::toMap(Store &map) const
 {
     AbstractProcessStep::toMap(map);
 
-    map.insert(id().withSuffix(ARGUMENTS_PARTIAL_KEY).toString(),
-               arguments());
-    map.insert(id().withSuffix(USE_DEFAULT_ARGS_PARTIAL_KEY).toString(),
-               isDefault());
-    map.insert(id().withSuffix(CLEAN_PARTIAL_KEY).toString(), m_clean);
-    map.insert(id().withSuffix(COMMAND_PARTIAL_KEY).toString(), command().toSettings());
+    map.insert(id().toKey() + ARGUMENTS_PARTIAL_KEY, arguments());
+    map.insert(id().toKey() + USE_DEFAULT_ARGS_PARTIAL_KEY, isDefault());
+    map.insert(id().toKey() + CLEAN_PARTIAL_KEY, m_clean);
+    map.insert(id().toKey() + COMMAND_PARTIAL_KEY, command().toSettings());
 }
 
-void IosDsymBuildStep::fromMap(const QVariantMap &map)
+void IosDsymBuildStep::fromMap(const Store &map)
 {
-    QVariant bArgs = map.value(id().withSuffix(ARGUMENTS_PARTIAL_KEY).toString());
+    QVariant bArgs = map.value(id().toKey() + ARGUMENTS_PARTIAL_KEY);
     m_arguments = bArgs.toStringList();
-    bool useDefaultArguments = map.value(
-                id().withSuffix(USE_DEFAULT_ARGS_PARTIAL_KEY).toString()).toBool();
-    m_clean = map.value(id().withSuffix(CLEAN_PARTIAL_KEY).toString(), m_clean).toBool();
-    m_command = FilePath::fromSettings(map.value(id().withSuffix(COMMAND_PARTIAL_KEY).toString()));
+    bool useDefaultArguments = map.value(id().toKey() + USE_DEFAULT_ARGS_PARTIAL_KEY).toBool();
+    m_clean = map.value(id().toKey() + CLEAN_PARTIAL_KEY, m_clean).toBool();
+    m_command = FilePath::fromSettings(map.value(id().toKey() + COMMAND_PARTIAL_KEY));
     if (useDefaultArguments) {
         m_command = defaultCommand();
         m_arguments = defaultArguments();

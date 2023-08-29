@@ -35,7 +35,7 @@
 #include <projectexplorer/deploymentdata.h>
 #include <projectexplorer/headerpath.h>
 #include <projectexplorer/kit.h>
-#include <projectexplorer/kitinformation.h>
+#include <projectexplorer/kitaspects.h>
 #include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/target.h>
@@ -49,7 +49,7 @@
 #include <qmljs/qmljsmodelmanagerinterface.h>
 #include <qmljstools/qmljsmodelmanager.h>
 #include <qtsupport/qtcppkitinfo.h>
-#include <qtsupport/qtkitinformation.h>
+#include <qtsupport/qtkitaspect.h>
 
 #include <QCoreApplication>
 #include <QElapsedTimer>

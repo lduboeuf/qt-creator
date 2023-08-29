@@ -307,8 +307,9 @@ bool handleDoxygenContinuation(QTextCursor &cursor,
 static bool trySplitComment(TextEditor::TextEditorWidget *editorWidget,
                      const CPlusPlus::Snapshot &snapshot)
 {
-    const TextEditor::CommentsSettings &settings = CppToolsSettings::instance()->commentsSettings();
-    if (!settings.m_enableDoxygen && !settings.m_leadingAsterisks)
+    const TextEditor::CommentsSettings::Data &settings
+        = TextEditorSettings::commentsSettings(editorWidget->textDocument()->filePath());
+    if (!settings.enableDoxygen && !settings.leadingAsterisks)
         return false;
 
     if (editorWidget->multiTextCursor().hasMultipleCursors())
@@ -325,7 +326,7 @@ static bool trySplitComment(TextEditor::TextEditorWidget *editorWidget,
     //      enter. If leading asterisk(s) is set we need to write a comment continuation
     //      with those.
 
-    if (settings.m_enableDoxygen && cursor.positionInBlock() >= 3) {
+    if (settings.enableDoxygen && cursor.positionInBlock() >= 3) {
         const int pos = cursor.position();
         if (isStartOfDoxygenComment(cursor)) {
             QTextDocument *textDocument = editorWidget->document();
@@ -340,9 +341,7 @@ static bool trySplitComment(TextEditor::TextEditorWidget *editorWidget,
 
             DoxygenGenerator doxygen;
             doxygen.setStyle(style);
-            doxygen.setAddLeadingAsterisks(settings.m_leadingAsterisks);
-            doxygen.setGenerateBrief(settings.m_generateBrief);
-            doxygen.setStartComment(false);
+            doxygen.setSettings(settings);
 
             // Move until we reach any possibly meaningful content.
             while (textDocument->characterAt(cursor.position()).isSpace()
@@ -369,8 +368,8 @@ static bool trySplitComment(TextEditor::TextEditorWidget *editorWidget,
 
     return handleDoxygenContinuation(cursor,
                                      editorWidget,
-                                     settings.m_enableDoxygen,
-                                     settings.m_leadingAsterisks);
+                                     settings.enableDoxygen,
+                                     settings.leadingAsterisks);
 }
 
 } // anonymous namespace
@@ -454,7 +453,7 @@ void CppEditorWidget::finalizeInitialization()
 
     connect(document(), &QTextDocument::contentsChange,
             &d->m_localRenaming, &CppLocalRenaming::onContentsChangeOfEditorWidgetDocument);
-    connect(&d->m_localRenaming, &CppLocalRenaming::finished, [this] {
+    connect(&d->m_localRenaming, &CppLocalRenaming::finished, this, [this] {
         cppEditorDocument()->recalculateSemanticInfoDetached();
     });
     connect(&d->m_localRenaming, &CppLocalRenaming::processKeyPressNormally,

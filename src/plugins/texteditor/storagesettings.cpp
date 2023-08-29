@@ -9,7 +9,8 @@
 #include <utils/settingsutils.h>
 
 #include <QRegularExpression>
-#include <QString>
+
+using namespace Utils;
 
 namespace TextEditor {
 
@@ -32,18 +33,18 @@ StorageSettings::StorageSettings()
 {
 }
 
-void StorageSettings::toSettings(const QString &category) const
+void StorageSettings::toSettings(const Key &category) const
 {
-    Utils::toSettings(QLatin1String(groupPostfix), category, Core::ICore::settings(), this);
+    Utils::toSettings(groupPostfix, category, Core::ICore::settings(), this);
 }
 
-void StorageSettings::fromSettings(const QString &category)
+void StorageSettings::fromSettings(const Key &category)
 {
     *this = StorageSettings();
-    Utils::fromSettings(QLatin1String(groupPostfix), category, Core::ICore::settings(), this);
+    Utils::fromSettings(groupPostfix, category, Core::ICore::settings(), this);
 }
 
-QVariantMap StorageSettings::toMap() const
+Store StorageSettings::toMap() const
 {
     return {
         {cleanWhitespaceKey, m_cleanWhitespace},
@@ -55,7 +56,7 @@ QVariantMap StorageSettings::toMap() const
     };
 }
 
-void StorageSettings::fromMap(const QVariantMap &map)
+void StorageSettings::fromMap(const Store &map)
 {
     m_cleanWhitespace = map.value(cleanWhitespaceKey, m_cleanWhitespace).toBool();
     m_inEntireDocument = map.value(inEntireDocumentKey, m_inEntireDocument).toBool();

@@ -25,6 +25,7 @@ namespace Utils {
 class Icon;
 class MacroExpander;
 class OutputLineParser;
+class ProcessRunData;
 } // Utils
 
 namespace ProjectExplorer {
@@ -37,18 +38,6 @@ class RunControlPrivate;
 class RunWorkerPrivate;
 class SimpleTargetRunnerPrivate;
 } // Internal
-
-
-class PROJECTEXPLORER_EXPORT Runnable
-{
-public:
-    Runnable() = default;
-
-    Utils::CommandLine command;
-    Utils::FilePath workingDirectory;
-    Utils::Environment environment;
-    QVariantHash extraData;
-};
 
 class PROJECTEXPLORER_EXPORT RunWorker : public QObject
 {
@@ -65,8 +54,8 @@ public:
 
     void setId(const QString &id);
 
-    void recordData(const QString &channel, const QVariant &data);
-    QVariant recordedData(const QString &channel) const;
+    void recordData(const Utils::Key &channel, const QVariant &data);
+    QVariant recordedData(const Utils::Key &channel) const;
 
     // Part of read-only interface of RunControl for convenience.
     void appendMessage(const QString &msg, Utils::OutputFormat format, bool appendNewLine = true);
@@ -83,7 +72,6 @@ public:
 
     void reportFailure(const QString &msg = QString());
     void setSupportsReRunning(bool reRunningSupported);
-    bool supportsReRunning() const;
 
     static QString userMessageForProcessError(QProcess::ProcessError,
                                               const Utils::FilePath &programName);
@@ -203,7 +191,7 @@ public:
     Utils::FilePath buildDirectory() const;
     Utils::Environment buildEnvironment() const;
 
-    QVariantMap settingsData(Utils::Id id) const;
+    Utils::Store settingsData(Utils::Id id) const;
 
     Utils::FilePath targetFilePath() const;
     Utils::FilePath projectFilePath() const;
@@ -212,7 +200,7 @@ public:
     Utils::Id runMode() const;
     bool isPrintEnvironmentEnabled() const;
 
-    const Runnable &runnable() const;
+    const Utils::ProcessRunData &runnable() const;
 
     const Utils::CommandLine &commandLine() const;
     void setCommandLine(const Utils::CommandLine &command);
@@ -284,8 +272,8 @@ private:
     void start() final;
     void stop() final;
 
-    const Runnable &runnable() const = delete;
-    void setRunnable(const Runnable &) = delete;
+    const Utils::ProcessRunData &runnable() const = delete;
+    void setRunnable(const Utils::ProcessRunData &) = delete;
 
     const std::unique_ptr<Internal::SimpleTargetRunnerPrivate> d;
 };

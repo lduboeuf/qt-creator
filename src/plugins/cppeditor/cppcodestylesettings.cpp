@@ -40,13 +40,15 @@ static const char extraPaddingForConditionsIfConfusingAlignKey[] = "ExtraPadding
 static const char alignAssignmentsKey[] = "AlignAssignments";
 static const char shortGetterNameKey[] = "ShortGetterName";
 
+using namespace Utils;
+
 namespace CppEditor {
 
 // ------------------ CppCodeStyleSettingsWidget
 
 CppCodeStyleSettings::CppCodeStyleSettings() = default;
 
-QVariantMap CppCodeStyleSettings::toMap() const
+Store CppCodeStyleSettings::toMap() const
 {
     return {
         {indentBlockBracesKey, indentBlockBraces},
@@ -73,7 +75,7 @@ QVariantMap CppCodeStyleSettings::toMap() const
     };
 }
 
-void CppCodeStyleSettings::fromMap(const QVariantMap &map)
+void CppCodeStyleSettings::fromMap(const Store &map)
 {
     indentBlockBraces = map.value(indentBlockBracesKey, indentBlockBraces).toBool();
     indentBlockBody = map.value(indentBlockBodyKey, indentBlockBody).toBool();

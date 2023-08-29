@@ -137,13 +137,13 @@ static TextDocumentPositionParams generateDocPosParams(TextEditor::TextDocument 
     return TextDocumentPositionParams(documentId, pos);
 }
 
-void SymbolSupport::findLinkAt(TextEditor::TextDocument *document,
-                               const QTextCursor &cursor,
-                               Utils::LinkHandler callback,
-                               const bool resolveTarget)
+MessageId SymbolSupport::findLinkAt(TextEditor::TextDocument *document,
+                                    const QTextCursor &cursor,
+                                    Utils::LinkHandler callback,
+                                    const bool resolveTarget)
 {
     if (!m_client->reachable())
-        return;
+        return {};
     GotoDefinitionRequest request(generateDocPosParams(document, cursor, m_client));
     std::optional<Utils::Link> linkUnderCursor;
     if (!resolveTarget) {
@@ -165,6 +165,7 @@ void SymbolSupport::findLinkAt(TextEditor::TextDocument *document,
                                           request,
                                           m_client->dynamicCapabilities(),
                                           m_client->capabilities());
+    return request.id();
 }
 
 bool SymbolSupport::supportsFindUsages(TextEditor::TextDocument *document) const
@@ -452,21 +453,24 @@ void SymbolSupport::requestPrepareRename(TextEditor::TextDocument *document,
 void SymbolSupport::requestRename(const TextDocumentPositionParams &positionParams,
                                   Core::SearchResult *search)
 {
+    if (m_renameRequestIds[search].isValid())
+        m_client->cancelRequest(m_renameRequestIds[search]);
     RenameParams params(positionParams);
     params.setNewName(search->textToReplace());
     RenameRequest request(params);
     request.setResponseCallback([this, search](const RenameRequest::Response &response) {
         handleRenameResponse(search, response);
     });
+    m_renameRequestIds[search] = request.id();
     m_client->sendMessage(request);
     if (search->isInteractive())
         search->popup();
 }
 
 Utils::SearchResultItems generateReplaceItems(const WorkspaceEdit &edits,
-                                                   Core::SearchResult *search,
-                                                   bool limitToProjects,
-                                                   const DocumentUri::PathMapper &pathMapper)
+                                              Core::SearchResult *search,
+                                              bool limitToProjects,
+                                              const DocumentUri::PathMapper &pathMapper)
 {
     auto convertEdits = [](const QList<TextEdit> &edits) {
         return Utils::transform(edits, [](const TextEdit &edit) {
@@ -546,6 +550,7 @@ void SymbolSupport::startRenameSymbol(const TextDocumentPositionParams &position
 void SymbolSupport::handleRenameResponse(Core::SearchResult *search,
                                          const RenameRequest::Response &response)
 {
+    m_renameRequestIds.remove(search);
     const std::optional<PrepareRenameRequest::Response::Error> &error = response.error();
     QString errorMessage;
     if (error.has_value()) {
@@ -577,7 +582,7 @@ void SymbolSupport::applyRename(const Utils::SearchResultItems &checkedItems,
     QSet<Utils::FilePath> affectedNonOpenFilePaths;
     QMap<Utils::FilePath, QList<TextEdit>> editsForDocuments;
     for (const Utils::SearchResultItem &item : checkedItems) {
-        const auto filePath = Utils::FilePath::fromString(item.path().value(0));
+        const auto filePath = Utils::FilePath::fromUserInput(item.path().value(0));
         if (!m_client->documentForFilePath(filePath))
             affectedNonOpenFilePaths << filePath;
         TextEdit edit(item.userData().toJsonObject());

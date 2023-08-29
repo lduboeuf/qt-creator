@@ -7,8 +7,6 @@
 
 #include <QObject>
 
-namespace TextEditor { class CommentsSettings; }
-
 namespace CppEditor {
 
 class CppCodeStylePreferences;
@@ -24,9 +22,6 @@ public:
     static CppToolsSettings *instance();
 
     static CppCodeStylePreferences *cppCodeStyle();
-
-    static const TextEditor::CommentsSettings &commentsSettings();
-    static void setCommentsSettings(const TextEditor::CommentsSettings &commentsSettings);
 
     static bool sortedEditorDocumentOutline();
     static void setSortedEditorDocumentOutline(bool sorted);

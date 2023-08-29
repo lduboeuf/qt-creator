@@ -26,8 +26,8 @@ class RunSettings
 public:
     RunSettings();
 
-    void fromMap(const QVariantMap &map, const QString &prefix = QString());
-    void toMap(QVariantMap &map, const QString &prefix = QString()) const;
+    void fromMap(const Utils::Store &map, const Utils::Key &prefix = {});
+    void toMap(Utils::Store &map, const Utils::Key &prefix = {}) const;
 
     Utils::Id diagnosticConfigId() const;
     void setDiagnosticConfigId(const Utils::Id &id) { m_diagnosticConfigId = id; }
@@ -58,12 +58,11 @@ private:
 
 class ClangToolsSettings : public Utils::AspectContainer
 {
-    Q_OBJECT
-
     ClangToolsSettings();
+
 public:
     static ClangToolsSettings *instance();
-    void writeSettings();
+    void writeSettings() const override;
 
     // Executables
     Utils::FilePathAspect clangTidyExecutable{this};
@@ -82,11 +81,8 @@ public:
     static VersionAndSuffix clangTidyVersion();
     static QVersionNumber clazyVersion();
 
-signals:
-    void changed();
-
 private:
-    void readSettings();
+    void readSettings() override;
 
     // Diagnostic Configs
     CppEditor::ClangDiagnosticConfigs m_diagnosticConfigs;

@@ -9,7 +9,7 @@
 #include "devicesupport/idevice.h"
 #include "devicesupport/idevicefactory.h"
 #include "devicesupport/sshsettings.h"
-#include "kitinformation.h"
+#include "kitaspects.h"
 #include "project.h"
 #include "projectexplorer.h"
 #include "projectexplorerconstants.h"
@@ -202,7 +202,7 @@ public:
     QList<RunWorker *> stopDependencies;
     QString id;
 
-    QVariantMap data;
+    Store data;
     bool supportsReRunning = true;
     bool essential = false;
 };
@@ -234,13 +234,14 @@ class RunControlPrivateData
 {
 public:
     QString displayName;
-    Runnable runnable;
+    ProcessRunData runnable;
+    QVariantHash extraData;
     IDevice::ConstPtr device;
     Icon icon;
     const MacroExpander *macroExpander = nullptr;
     AspectContainerData aspectData;
     QString buildKey;
-    QMap<Id, QVariantMap> settingsData;
+    QMap<Id, Store> settingsData;
     Id runConfigId;
     BuildTargetInfo buildTargetInfo;
     FilePath buildDirectory;
@@ -336,6 +337,7 @@ void RunControl::copyDataFromRunConfiguration(RunConfiguration *runConfig)
     QTC_ASSERT(runConfig, return);
     d->runConfigId = runConfig->id();
     d->runnable = runConfig->runnable();
+    d->extraData = runConfig->extraData();
     d->displayName = runConfig->expandedDisplayName();
     d->buildKey = runConfig->buildKey();
     d->settingsData = runConfig->settingsData();
@@ -843,7 +845,7 @@ bool RunControl::isPrintEnvironmentEnabled() const
     return d->printEnvironment;
 }
 
-const Runnable &RunControl::runnable() const
+const ProcessRunData &RunControl::runnable() const
 {
     return d->runnable;
 }
@@ -880,12 +882,12 @@ void RunControl::setEnvironment(const Environment &environment)
 
 const QVariantHash &RunControl::extraData() const
 {
-    return d->runnable.extraData;
+    return d->extraData;
 }
 
 void RunControl::setExtraData(const QVariantHash &extraData)
 {
-    d->runnable.extraData = extraData;
+    d->extraData = extraData;
 }
 
 QString RunControl::displayName() const
@@ -945,7 +947,7 @@ const BaseAspect::Data *RunControl::aspect(BaseAspect::Data::ClassId classId) co
     return d->aspectData.aspect(classId);
 }
 
-QVariantMap RunControl::settingsData(Id id) const
+Store RunControl::settingsData(Id id) const
 {
     return d->settingsData.value(id);
 }
@@ -1120,7 +1122,9 @@ bool RunControl::showPromptToStopDialog(const QString &title,
                                                   text,
                                                   decider,
                                                   QMessageBox::Yes | QMessageBox::Cancel,
-                                                  QMessageBox::Yes);
+                                                  QMessageBox::Yes,
+                                                  QMessageBox::Yes,
+                                                  buttonTexts);
 
     return selected == QMessageBox::Yes;
 }
@@ -1734,12 +1738,12 @@ void RunWorker::setId(const QString &id)
     d->id = id;
 }
 
-void RunWorker::recordData(const QString &channel, const QVariant &data)
+void RunWorker::recordData(const Key &channel, const QVariant &data)
 {
     d->data[channel] = data;
 }
 
-QVariant RunWorker::recordedData(const QString &channel) const
+QVariant RunWorker::recordedData(const Key &channel) const
 {
     return d->data[channel];
 }
@@ -1747,11 +1751,6 @@ QVariant RunWorker::recordedData(const QString &channel) const
 void RunWorker::setSupportsReRunning(bool reRunningSupported)
 {
     d->supportsReRunning = reRunningSupported;
-}
-
-bool RunWorker::supportsReRunning() const
-{
-    return d->supportsReRunning;
 }
 
 QString RunWorker::userMessageForProcessError(QProcess::ProcessError error, const FilePath &program)

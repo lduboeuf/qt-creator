@@ -972,7 +972,7 @@ QRect TerminalView::gridToViewport(QRect rect) const
 
 QPoint TerminalView::toGridPos(QMouseEvent *event) const
 {
-    return globalToGrid(event->pos().toPointF() + QPointF(0, -topMargin() + 0.5));
+    return globalToGrid(QPointF(event->pos()) + QPointF(0, -topMargin() + 0.5));
 }
 
 void TerminalView::updateViewport()
@@ -990,11 +990,13 @@ void TerminalView::focusInEvent(QFocusEvent *)
     updateViewport();
     configBlinkTimer();
     selectionChanged(d->m_selection);
+    d->m_surface->sendFocus(true);
 }
 void TerminalView::focusOutEvent(QFocusEvent *)
 {
     updateViewport();
     configBlinkTimer();
+    d->m_surface->sendFocus(false);
 }
 
 void TerminalView::inputMethodEvent(QInputMethodEvent *event)

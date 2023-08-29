@@ -4,12 +4,11 @@
 #include "qtsupportplugin.h"
 
 #include "codegenerator.h"
-#include "codegensettingspage.h"
 #include "externaleditors.h"
 #include "gettingstartedwelcomepage.h"
 #include "profilereader.h"
 #include "qscxmlcgenerator.h"
-#include "qtkitinformation.h"
+#include "qtkitaspect.h"
 #include "qtoptionspage.h"
 #include "qtoutputformatter.h"
 #include "qtsupporttr.h"
@@ -52,13 +51,10 @@ public:
     DesktopQtVersionFactory desktopQtVersionFactory;
     EmbeddedLinuxQtVersionFactory embeddedLinuxQtVersionFactory;
 
-    CodeGenSettingsPage codeGenSettingsPage;
     QtOptionsPage qtOptionsPage;
 
     ExamplesWelcomePage examplesPage{true};
     ExamplesWelcomePage tutorialPage{false};
-
-    QtKitAspect qtKiAspect;
 
     QtOutputFormatterFactory qtOutputFormatterFactory;
 
@@ -67,6 +63,8 @@ public:
 
     DesignerExternalEditor designerEditor;
     LinguistEditor linguistEditor;
+
+    TranslationWizardPageFactory translationWizardPageFactory;
 };
 
 QtSupportPlugin::~QtSupportPlugin()
@@ -131,7 +129,6 @@ void QtSupportPlugin::initialize()
     new ProFileCacheManager(this);
 
     JsExpander::registerGlobalObject<CodeGenerator>("QtSupport");
-    ProjectExplorer::JsonWizardFactory::registerPageFactory(new TranslationWizardPageFactory);
 
     BuildPropertiesSettings::showQtSettings();
 
@@ -146,7 +143,7 @@ static void askAboutQtInstallation()
 {
     // if the install settings exist, the Qt Creator installation is (probably) already linked to
     // a Qt installation, so don't ask
-    if (!QtOptionsPage::canLinkWithQt() || QtOptionsPage::isLinkedWithQt()
+    if (!LinkWithQtSupport::canLinkWithQt() || LinkWithQtSupport::isLinkedWithQt()
         || !ICore::infoBar()->canInfoBeAdded(kLinkWithQtInstallationSetting))
         return;
 
@@ -158,7 +155,7 @@ static void askAboutQtInstallation()
         Utils::InfoBarEntry::GlobalSuppression::Enabled);
     info.addCustomButton(Tr::tr("Link with Qt"), [] {
         ICore::infoBar()->removeInfo(kLinkWithQtInstallationSetting);
-        QTimer::singleShot(0, ICore::dialogParent(), &QtOptionsPage::linkWithQt);
+        QTimer::singleShot(0, ICore::dialogParent(), &LinkWithQtSupport::linkWithQt);
     });
     ICore::infoBar()->addInfo(info);
 }

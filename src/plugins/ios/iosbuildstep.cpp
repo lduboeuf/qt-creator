@@ -11,7 +11,7 @@
 #include <projectexplorer/buildsteplist.h>
 #include <projectexplorer/gcctoolchain.h>
 #include <projectexplorer/gnumakeparser.h>
-#include <projectexplorer/kitinformation.h>
+#include <projectexplorer/kitaspects.h>
 #include <projectexplorer/processparameters.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/projectexplorer.h>
@@ -56,8 +56,8 @@ private:
 
     bool init() final;
     void setupOutputFormatter(Utils::OutputFormatter *formatter) final;
-    void fromMap(const QVariantMap &map) final;
-    void toMap(QVariantMap &map) const final;
+    void fromMap(const Store &map) final;
+    void toMap(Store &map) const final;
 
     QStringList m_baseBuildArguments;
     QStringList m_extraArguments;
@@ -166,7 +166,7 @@ void IosBuildStep::setupOutputFormatter(OutputFormatter *formatter)
     AbstractProcessStep::setupOutputFormatter(formatter);
 }
 
-void IosBuildStep::toMap(QVariantMap &map) const
+void IosBuildStep::toMap(Store &map) const
 {
     AbstractProcessStep::toMap(map);
 
@@ -177,7 +177,7 @@ void IosBuildStep::toMap(QVariantMap &map) const
     map.insert(CLEAN_KEY, stepList()->id() == ProjectExplorer::Constants::BUILDSTEPS_CLEAN);
 }
 
-void IosBuildStep::fromMap(const QVariantMap &map)
+void IosBuildStep::fromMap(const Store &map)
 {
     QVariant bArgs = map.value(BUILD_ARGUMENTS_KEY);
     m_baseBuildArguments = bArgs.toStringList();

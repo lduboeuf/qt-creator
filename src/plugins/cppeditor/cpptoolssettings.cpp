@@ -9,7 +9,6 @@
 #include "cppcodestylepreferencesfactory.h"
 
 #include <coreplugin/icore.h>
-#include <texteditor/commentssettings.h>
 #include <texteditor/completionsettingspage.h>
 #include <texteditor/codestylepool.h>
 #include <texteditor/tabsettings.h>
@@ -26,6 +25,7 @@ const bool kSortEditorDocumentOutlineDefault = true;
 
 using namespace Core;
 using namespace TextEditor;
+using namespace Utils;
 
 namespace CppEditor {
 namespace Internal {
@@ -33,7 +33,6 @@ namespace Internal {
 class CppToolsSettingsPrivate
 {
 public:
-    CommentsSettings m_commentsSettings;
     CppCodeStylePreferences *m_globalCodeStyle = nullptr;
 };
 
@@ -49,10 +48,6 @@ CppToolsSettings::CppToolsSettings()
     d = new Internal::CppToolsSettingsPrivate;
 
     qRegisterMetaType<CppCodeStyleSettings>("CppEditor::CppCodeStyleSettings");
-
-    d->m_commentsSettings = TextEditorSettings::commentsSettings();
-    connect(TextEditorSettings::instance(), &TextEditorSettings::commentsSettingsChanged,
-            this, &CppToolsSettings::setCommentsSettings);
 
     // code style factory
     ICodeStylePreferencesFactory *factory = new CppCodeStylePreferencesFactory();
@@ -134,7 +129,7 @@ CppToolsSettings::CppToolsSettings()
     pool->loadCustomCodeStyles();
 
     // load global settings (after built-in settings are added to the pool)
-    d->m_globalCodeStyle->fromSettings(QLatin1String(Constants::CPP_SETTINGS_ID));
+    d->m_globalCodeStyle->fromSettings(Constants::CPP_SETTINGS_ID);
 
     // mimetypes to be handled
     TextEditorSettings::registerMimeTypeForLanguageId(Constants::C_SOURCE_MIMETYPE, Constants::CPP_SETTINGS_ID);
@@ -164,21 +159,10 @@ CppCodeStylePreferences *CppToolsSettings::cppCodeStyle()
     return d->m_globalCodeStyle;
 }
 
-const CommentsSettings &CppToolsSettings::commentsSettings()
+static Key sortEditorDocumentOutlineKey()
 {
-    return d->m_commentsSettings;
-}
-
-void CppToolsSettings::setCommentsSettings(const CommentsSettings &commentsSettings)
-{
-    d->m_commentsSettings = commentsSettings;
-}
-
-static QString sortEditorDocumentOutlineKey()
-{
-    return QLatin1String(Constants::CPPEDITOR_SETTINGSGROUP)
-         + QLatin1Char('/')
-         + QLatin1String(Constants::CPPEDITOR_SORT_EDITOR_DOCUMENT_OUTLINE);
+    return Key(Constants::CPPEDITOR_SETTINGSGROUP)
+         + '/' + Constants::CPPEDITOR_SORT_EDITOR_DOCUMENT_OUTLINE;
 }
 
 bool CppToolsSettings::sortedEditorDocumentOutline()

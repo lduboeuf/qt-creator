@@ -33,14 +33,14 @@
 
 #include <projectexplorer/devicesupport/idevice.h>
 #include <projectexplorer/environmentaspect.h>
-#include <projectexplorer/kitinformation.h>
+#include <projectexplorer/kitaspects.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/projectmanager.h>
 #include <projectexplorer/target.h>
 
-#include <qtsupport/qtkitinformation.h>
+#include <qtsupport/qtkitaspect.h>
 
 #include <texteditor/texteditor.h>
 

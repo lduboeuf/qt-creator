@@ -467,8 +467,10 @@ QHash<QString, QVariant> FancyMainWindow::saveSettings() const
 void FancyMainWindow::restoreSettings(const QHash<QString, QVariant> &settings)
 {
     QByteArray ba = settings.value(QLatin1String(StateKey), QByteArray()).toByteArray();
-    if (!ba.isEmpty())
-        restoreState(ba, settingsVersion);
+    if (!ba.isEmpty()) {
+        if (!restoreState(ba, settingsVersion))
+            qWarning() << "Restoring the state of dock widgets failed.";
+    }
     bool on = settings.value(QLatin1String(AutoHideTitleBarsKey), true).toBool();
     d->m_autoHideTitleBars.setChecked(on);
     d->m_showCentralWidget.setChecked(settings.value(ShowCentralWidgetKey, true).toBool());
@@ -478,9 +480,25 @@ void FancyMainWindow::restoreSettings(const QHash<QString, QVariant> &settings)
     }
 }
 
+static void findDockChildren(QWidget *parent, QList<QDockWidget *> &result)
+{
+    for (QObject *child : parent->children()) {
+        QWidget *childWidget = qobject_cast<QWidget *>(child);
+        if (!childWidget)
+            continue;
+
+        if (auto dockWidget = qobject_cast<QDockWidget *>(child))
+            result.append(dockWidget);
+        else if (!qobject_cast<QMainWindow *>(child))
+            findDockChildren(qobject_cast<QWidget *>(child), result);
+    }
+}
+
 const QList<QDockWidget *> FancyMainWindow::dockWidgets() const
 {
-    return findChildren<QDockWidget *>();
+    QList<QDockWidget *> result;
+    findDockChildren((QWidget *) this, result);
+    return result;
 }
 
 bool FancyMainWindow::autoHideTitleBars() const

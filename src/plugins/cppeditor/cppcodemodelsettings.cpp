@@ -29,55 +29,36 @@ using namespace Utils;
 
 namespace CppEditor {
 
-static Id initialClangDiagnosticConfigId()
-{ return Constants::CPP_CLANG_DIAG_CONFIG_BUILDSYSTEM; }
-
+static Id initialClangDiagnosticConfigId() { return Constants::CPP_CLANG_DIAG_CONFIG_BUILDSYSTEM; }
 static CppCodeModelSettings::PCHUsage initialPchUsage()
-{ return CppCodeModelSettings::PchUse_BuildSystem; }
+    { return CppCodeModelSettings::PchUse_BuildSystem; }
+static Key enableLowerClazyLevelsKey() { return "enableLowerClazyLevels"; }
+static Key pchUsageKey() { return Constants::CPPEDITOR_MODEL_MANAGER_PCH_USAGE; }
+static Key interpretAmbiguousHeadersAsCHeadersKey()
+    { return Constants::CPPEDITOR_INTERPRET_AMBIGIUOUS_HEADERS_AS_C_HEADERS; }
+static Key skipIndexingBigFilesKey() { return Constants::CPPEDITOR_SKIP_INDEXING_BIG_FILES; }
+static Key ignoreFilesKey() { return Constants::CPPEDITOR_IGNORE_FILES; }
+static Key ignorePatternKey() { return Constants::CPPEDITOR_IGNORE_PATTERN; }
+static Key useBuiltinPreprocessorKey() { return Constants::CPPEDITOR_USE_BUILTIN_PREPROCESSOR; }
+static Key indexerFileSizeLimitKey() { return Constants::CPPEDITOR_INDEXER_FILE_SIZE_LIMIT; }
 
-static QString enableLowerClazyLevelsKey()
-{ return QLatin1String("enableLowerClazyLevels"); }
-
-static QString pchUsageKey()
-{ return QLatin1String(Constants::CPPEDITOR_MODEL_MANAGER_PCH_USAGE); }
-
-static QString interpretAmbiguousHeadersAsCHeadersKey()
-{ return QLatin1String(Constants::CPPEDITOR_INTERPRET_AMBIGIUOUS_HEADERS_AS_C_HEADERS); }
-
-static QString skipIndexingBigFilesKey()
-{ return QLatin1String(Constants::CPPEDITOR_SKIP_INDEXING_BIG_FILES); }
-
-static QString ignoreFilesKey()
-{ return QLatin1String(Constants::CPPEDITOR_IGNORE_FILES); }
-
-static QString ignorePatternKey()
-{ return QLatin1String(Constants::CPPEDITOR_IGNORE_PATTERN); }
-
-static QString useBuiltinPreprocessorKey()
-{ return QLatin1String(Constants::CPPEDITOR_USE_BUILTIN_PREPROCESSOR); }
-
-static QString indexerFileSizeLimitKey()
-{ return QLatin1String(Constants::CPPEDITOR_INDEXER_FILE_SIZE_LIMIT); }
-
-static QString clangdSettingsKey() { return QLatin1String("ClangdSettings"); }
-static QString useClangdKey() { return QLatin1String("UseClangdV7"); }
-static QString clangdPathKey() { return QLatin1String("ClangdPath"); }
-static QString clangdIndexingKey() { return QLatin1String("ClangdIndexing"); }
-static QString clangdIndexingPriorityKey() { return QLatin1String("ClangdIndexingPriority"); }
-static QString clangdHeaderSourceSwitchModeKey() {
-    return QLatin1String("ClangdHeaderSourceSwitchMode");
-}
-static QString clangdHeaderInsertionKey() { return QLatin1String("ClangdHeaderInsertion"); }
-static QString clangdThreadLimitKey() { return QLatin1String("ClangdThreadLimit"); }
-static QString clangdDocumentThresholdKey() { return QLatin1String("ClangdDocumentThreshold"); }
-static QString clangdSizeThresholdEnabledKey() { return QLatin1String("ClangdSizeThresholdEnabled"); }
-static QString clangdSizeThresholdKey() { return QLatin1String("ClangdSizeThreshold"); }
-static QString clangdUseGlobalSettingsKey() { return QLatin1String("useGlobalSettings"); }
-static QString clangdblockIndexingSettingsKey() { return QLatin1String("blockIndexing"); }
-static QString sessionsWithOneClangdKey() { return QLatin1String("SessionsWithOneClangd"); }
-static QString diagnosticConfigIdKey() { return QLatin1String("diagnosticConfigId"); }
-static QString checkedHardwareKey() { return QLatin1String("checkedHardware"); }
-static QString completionResultsKey() { return QLatin1String("completionResults"); }
+static Key clangdSettingsKey() { return "ClangdSettings"; }
+static Key useClangdKey() { return "UseClangdV7"; }
+static Key clangdPathKey() { return "ClangdPath"; }
+static Key clangdIndexingKey() { return "ClangdIndexing"; }
+static Key clangdIndexingPriorityKey() { return "ClangdIndexingPriority"; }
+static Key clangdHeaderSourceSwitchModeKey() { return "ClangdHeaderSourceSwitchMode"; }
+static Key clangdHeaderInsertionKey() { return "ClangdHeaderInsertion"; }
+static Key clangdThreadLimitKey() { return "ClangdThreadLimit"; }
+static Key clangdDocumentThresholdKey() { return "ClangdDocumentThreshold"; }
+static Key clangdSizeThresholdEnabledKey() { return "ClangdSizeThresholdEnabled"; }
+static Key clangdSizeThresholdKey() { return "ClangdSizeThreshold"; }
+static Key clangdUseGlobalSettingsKey() { return "useGlobalSettings"; }
+static Key clangdblockIndexingSettingsKey() { return "blockIndexing"; }
+static Key sessionsWithOneClangdKey() { return "SessionsWithOneClangd"; }
+static Key diagnosticConfigIdKey() { return "diagnosticConfigId"; }
+static Key checkedHardwareKey() { return "checkedHardware"; }
+static Key completionResultsKey() { return "completionResults"; }
 
 static FilePath g_defaultClangdFilePath;
 static FilePath fallbackClangdFilePath()
@@ -425,7 +406,7 @@ void ClangdSettings::loadSettings()
     m_data.customDiagnosticConfigs = diagnosticConfigsFromSettings(settings);
 
     // Pre-8.0 compat
-    static const QString oldKey("ClangDiagnosticConfig");
+    static const Key oldKey("ClangDiagnosticConfig");
     const QVariant configId = settings->value(oldKey);
     if (configId.isValid()) {
         m_data.diagnosticConfigId = Id::fromSetting(configId);
@@ -517,7 +498,7 @@ void ClangdProjectSettings::loadSettings()
 {
     if (!m_project)
         return;
-    const QVariantMap data = m_project->namedSettings(clangdSettingsKey()).toMap();
+    const Store data = storeFromVariant(m_project->namedSettings(clangdSettingsKey()));
     m_useGlobalSettings = data.value(clangdUseGlobalSettingsKey(), true).toBool();
     m_blockIndexing = data.value(clangdblockIndexingSettingsKey(), false).toBool();
     if (!m_useGlobalSettings)
@@ -528,17 +509,17 @@ void ClangdProjectSettings::saveSettings()
 {
     if (!m_project)
         return;
-    QVariantMap data;
+    Store data;
     if (!m_useGlobalSettings)
         data = m_customSettings.toMap();
     data.insert(clangdUseGlobalSettingsKey(), m_useGlobalSettings);
     data.insert(clangdblockIndexingSettingsKey(), m_blockIndexing);
-    m_project->setNamedSettings(clangdSettingsKey(), data);
+    m_project->setNamedSettings(clangdSettingsKey(), variantFromStore(data));
 }
 
-QVariantMap ClangdSettings::Data::toMap() const
+Store ClangdSettings::Data::toMap() const
 {
-    QVariantMap map;
+    Store map;
     map.insert(useClangdKey(), useClangd);
     map.insert(clangdPathKey(),
                executableFilePath != fallbackClangdFilePath() ? executableFilePath.toString()
@@ -558,7 +539,7 @@ QVariantMap ClangdSettings::Data::toMap() const
     return map;
 }
 
-void ClangdSettings::Data::fromMap(const QVariantMap &map)
+void ClangdSettings::Data::fromMap(const Store &map)
 {
     useClangd = map.value(useClangdKey(), true).toBool();
     executableFilePath = FilePath::fromString(map.value(clangdPathKey()).toString());

@@ -15,7 +15,7 @@
 #include <coreplugin/messagemanager.h>
 
 #include <projectexplorer/devicesupport/devicemanager.h>
-#include <projectexplorer/kitinformation.h>
+#include <projectexplorer/kitaspects.h>
 #include <projectexplorer/kitmanager.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/projectexplorerconstants.h>
@@ -24,10 +24,10 @@
 
 #include <debugger/debuggeritemmanager.h>
 #include <debugger/debuggeritem.h>
-#include <debugger/debuggerkitinformation.h>
+#include <debugger/debuggerkitaspect.h>
 
 #include <qtsupport/baseqtversion.h>
-#include <qtsupport/qtkitinformation.h>
+#include <qtsupport/qtkitaspect.h>
 #include <qtsupport/qtversionmanager.h>
 
 #include <utils/algorithm.h>
@@ -89,51 +89,49 @@ const char LinuxOsKey[] = "linux";
 const char WindowsOsKey[] = "windows";
 const char macOsKey[] = "mac";
 
+const char SettingsGroup[] = "AndroidConfigurations";
+const char SDKLocationKey[] = "SDKLocation";
+const char CustomNdkLocationsKey[] = "CustomNdkLocations";
+const char DefaultNdkLocationKey[] = "DefaultNdkLocation";
+const char SdkFullyConfiguredKey[] = "AllEssentialsInstalled";
+const char SDKManagerToolArgsKey[] = "SDKManagerToolArgs";
+const char OpenJDKLocationKey[] = "OpenJDKLocation";
+const char OpenSslPriLocationKey[] = "OpenSSLPriLocation";
+const char AutomaticKitCreationKey[] = "AutomatiKitCreation";
+const char EmulatorArgsKey[] = "EmulatorArgs";
 
-namespace {
-    const QLatin1String SettingsGroup("AndroidConfigurations");
-    const QLatin1String SDKLocationKey("SDKLocation");
-    const QLatin1String CustomNdkLocationsKey("CustomNdkLocations");
-    const QLatin1String DefaultNdkLocationKey("DefaultNdkLocation");
-    const QLatin1String SdkFullyConfiguredKey("AllEssentialsInstalled");
-    const QLatin1String SDKManagerToolArgsKey("SDKManagerToolArgs");
-    const QLatin1String OpenJDKLocationKey("OpenJDKLocation");
-    const QLatin1String OpenSslPriLocationKey("OpenSSLPriLocation");
-    const QLatin1String AutomaticKitCreationKey("AutomatiKitCreation");
-    const QLatin1String EmulatorArgsKey("EmulatorArgs");
+const QLatin1String ArmToolchainPrefix("arm-linux-androideabi");
+const QLatin1String X86ToolchainPrefix("x86");
+const QLatin1String AArch64ToolchainPrefix("aarch64-linux-android");
+const QLatin1String X86_64ToolchainPrefix("x86_64");
 
-    const QLatin1String ArmToolchainPrefix("arm-linux-androideabi");
-    const QLatin1String X86ToolchainPrefix("x86");
-    const QLatin1String AArch64ToolchainPrefix("aarch64-linux-android");
-    const QLatin1String X86_64ToolchainPrefix("x86_64");
+const QLatin1String ArmToolsPrefix ("arm-linux-androideabi");
+const QLatin1String X86ToolsPrefix("i686-linux-android");
+const QLatin1String AArch64ToolsPrefix("aarch64-linux-android");
+const QLatin1String X86_64ToolsPrefix("x86_64-linux-android");
 
-    const QLatin1String ArmToolsPrefix("arm-linux-androideabi");
-    const QLatin1String X86ToolsPrefix("i686-linux-android");
-    const QLatin1String AArch64ToolsPrefix("aarch64-linux-android");
-    const QLatin1String X86_64ToolsPrefix("x86_64-linux-android");
+const QLatin1String ArmToolsDisplayName("arm");
+const QLatin1String X86ToolsDisplayName("i686");
+const QLatin1String AArch64ToolsDisplayName("aarch64");
+const QLatin1String X86_64ToolsDisplayName("x86_64");
 
-    const QLatin1String ArmToolsDisplayName("arm");
-    const QLatin1String X86ToolsDisplayName("i686");
-    const QLatin1String AArch64ToolsDisplayName("aarch64");
-    const QLatin1String X86_64ToolsDisplayName("x86_64");
+const QLatin1String Unknown("unknown");
+const QLatin1String keytoolName("keytool");
+const QLatin1String changeTimeStamp("ChangeTimeStamp");
 
-    const QLatin1String Unknown("unknown");
-    const QLatin1String keytoolName("keytool");
-    const QLatin1String changeTimeStamp("ChangeTimeStamp");
+const char sdkToolsVersionKey[] = "Pkg.Revision";
+const char ndkRevisionKey[] = "Pkg.Revision";
 
-    const QLatin1String sdkToolsVersionKey("Pkg.Revision");
-    const QLatin1String ndkRevisionKey("Pkg.Revision");
-
-    static QString sdkSettingsFileName()
-    {
-        return Core::ICore::installerResourcePath("android.xml").toString();
-    }
-
-    static QString ndkPackageMarker()
-    {
-        return QLatin1String(Constants::ndkPackageName) + ";";
-    }
+static QString sdkSettingsFileName()
+{
+    return Core::ICore::installerResourcePath("android.xml").toString();
 }
+
+static QString ndkPackageMarker()
+{
+    return QLatin1String(Constants::ndkPackageName) + ";";
+}
+
 
 //////////////////////////////////
 // AndroidConfig
@@ -675,7 +673,7 @@ QString AndroidConfig::getDeviceProperty(const QString &device, const QString &p
     adbProc.setCommand(cmd);
     adbProc.runBlocking();
     if (adbProc.result() != ProcessResult::FinishedWithSuccess)
-        return QString();
+        return {};
 
     return adbProc.allOutput();
 }
@@ -692,18 +690,18 @@ QString AndroidConfig::getAvdName(const QString &serialnumber)
 {
     int index = serialnumber.indexOf(QLatin1String("-"));
     if (index == -1)
-        return QString();
+        return {};
     bool ok;
     int port = serialnumber.mid(index + 1).toInt(&ok);
     if (!ok)
-        return QString();
+        return {};
 
     const QByteArray avdName = "avd name\n";
 
     QTcpSocket tcpSocket;
     tcpSocket.connectToHost(QHostAddress(QHostAddress::LocalHost), port);
     if (!tcpSocket.waitForConnected(100)) // Don't wait more than 100ms for a local connection
-        return QString{};
+        return {};
 
     tcpSocket.write(avdName + "exit\n");
     tcpSocket.waitForDisconnected(500);
@@ -1131,9 +1129,7 @@ static bool matchToolChain(const ToolChain *atc, const ToolChain *btc)
     if (atc->typeId() != Constants::ANDROID_TOOLCHAIN_TYPEID || btc->typeId() != Constants::ANDROID_TOOLCHAIN_TYPEID)
         return false;
 
-    auto aatc = static_cast<const AndroidToolChain *>(atc);
-    auto abtc = static_cast<const AndroidToolChain *>(btc);
-    return aatc->targetAbi() == abtc->targetAbi();
+    return atc->targetAbi() == btc->targetAbi();
 }
 
 void AndroidConfigurations::registerNewToolChains()

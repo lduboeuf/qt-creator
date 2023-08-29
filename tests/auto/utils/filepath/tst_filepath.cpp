@@ -115,6 +115,8 @@ private slots:
     void sort();
     void sort_data();
 
+    void isRootPath();
+
 private:
     QTemporaryDir tempDir;
     QString rootPath;
@@ -623,15 +625,15 @@ void tst_filepath::toString_data()
                                                   << "c:/__qtc_devices__/docker"
                                                   << "c:/__qtc_devices__/docker";
     QTest::newRow("qtc-root-folder") << "docker"
-                                     << "alpine:latest"
+                                     << "alpine.latest"
                                      << "/"
-                                     << "docker://alpine:latest/"
-                                     << "docker://alpine:latest/";
+                                     << "docker://alpine.latest/"
+                                     << "docker://alpine.latest/";
     QTest::newRow("qtc-root-folder-rel") << "docker"
-                                         << "alpine:latest"
+                                         << "alpine.latest"
                                          << ""
-                                         << "docker://alpine:latest"
-                                         << "docker://alpine:latest";
+                                         << "docker://alpine.latest"
+                                         << "docker://alpine.latest";
 }
 
 void tst_filepath::toString()
@@ -690,14 +692,14 @@ void tst_filepath::toFSPathString_data()
                                               << QDir::rootPath() + "__qtc_devices__/docker";
     QTest::newRow("qtc-root-folder")
         << "docker"
-        << "alpine:latest"
-        << "/" << QDir::rootPath() + "__qtc_devices__/docker/alpine:latest/"
-        << "docker://alpine:latest/";
+        << "alpine.latest"
+        << "/" << QDir::rootPath() + "__qtc_devices__/docker/alpine.latest/"
+        << "docker://alpine.latest/";
     QTest::newRow("qtc-root-folder-rel")
         << "docker"
-        << "alpine:latest"
-        << "" << QDir::rootPath() + "__qtc_devices__/docker/alpine:latest"
-        << "docker://alpine:latest";
+        << "alpine.latest"
+        << "" << QDir::rootPath() + "__qtc_devices__/docker/alpine.latest"
+        << "docker://alpine.latest";
 }
 
 void tst_filepath::toFSPathString()
@@ -1308,6 +1310,14 @@ void tst_filepath::startsWithDriveLetter_data()
     QTest::newRow("simple-win") << FilePath::fromString("c:/a") << true;
     QTest::newRow("simple-linux") << FilePath::fromString("/c:/a") << false;
     QTest::newRow("relative") << FilePath("a/b") << false;
+
+    QTest::newRow("remote-slash") << FilePath::fromString("docker://1234/") << false;
+    QTest::newRow("remote-single-letter") << FilePath::fromString("docker://1234/c") << false;
+    QTest::newRow("remote-drive") << FilePath::fromString("docker://1234/c:") << true;
+    QTest::newRow("remote-invalid-drive") << FilePath::fromString("docker://1234/c:a") << true;
+    QTest::newRow("remote-with-path") << FilePath::fromString("docker://1234/c:/a") << true;
+    QTest::newRow("remote-z") << FilePath::fromString("docker://1234/z:") << true;
+    QTest::newRow("remote-1") << FilePath::fromString("docker://1234/1:") << false;
 }
 
 void tst_filepath::startsWithDriveLetter()
@@ -1656,6 +1666,31 @@ void tst_filepath::sort()
     QCOMPARE(sortedPaths, sorted);
 }
 
+void tst_filepath::isRootPath()
+{
+    FilePath localRoot = FilePath::fromString(QDir::rootPath());
+    QVERIFY(localRoot.isRootPath());
+
+    FilePath localNonRoot = FilePath::fromString(QDir::rootPath() + "x");
+    QVERIFY(!localNonRoot.isRootPath());
+
+    if (HostOsInfo::isWindowsHost()) {
+        FilePath remoteWindowsRoot = FilePath::fromString("device://test/c:/");
+        QVERIFY(remoteWindowsRoot.isRootPath());
+
+        FilePath remoteWindowsRoot1 = FilePath::fromString("device://test/c:");
+        QVERIFY(remoteWindowsRoot1.isRootPath());
+
+        FilePath remoteWindowsNotRoot = FilePath::fromString("device://test/c:/x");
+        QVERIFY(!remoteWindowsNotRoot.isRootPath());
+    } else {
+        FilePath remoteRoot = FilePath::fromString("device://test/");
+        QVERIFY(remoteRoot.isRootPath());
+
+        FilePath remotePath = FilePath::fromString("device://test/x");
+        QVERIFY(!remotePath.isRootPath());
+    }
+}
 void tst_filepath::sort_data()
 {
     QTest::addColumn<QStringList>("input");

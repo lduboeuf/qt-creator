@@ -21,7 +21,7 @@ include(FeatureSummary)
 list(APPEND DEFAULT_DEFINES
   QT_CREATOR
   QT_NO_JAVA_STYLE_ITERATORS
-  QT_NO_CAST_TO_ASCII QT_RESTRICTED_CAST_FROM_ASCII
+  QT_NO_CAST_TO_ASCII QT_RESTRICTED_CAST_FROM_ASCII QT_NO_FOREACH
   QT_DISABLE_DEPRECATED_BEFORE=0x050900
   QT_USE_QSTRINGBUILDER
 )
@@ -550,3 +550,12 @@ function(extend_qtc_target target_name)
     set_source_files_properties(${_arg_SOURCES} PROPERTIES ${_arg_SOURCES_PROPERTIES})
   endif()
 endfunction()
+
+function (qtc_env_with_default envName varToSet default)
+  if(DEFINED ENV{${envName}})
+    set(${varToSet} $ENV{${envName}} PARENT_SCOPE)
+  else()
+    set(${varToSet} ${default} PARENT_SCOPE)
+  endif()
+endfunction()
+

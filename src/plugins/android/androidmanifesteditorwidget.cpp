@@ -14,16 +14,16 @@
 #include <coreplugin/icore.h>
 #include <coreplugin/editormanager/ieditor.h>
 
-#include <qtsupport/qtkitinformation.h>
+#include <qtsupport/qtkitaspect.h>
 
 #include <projectexplorer/buildconfiguration.h>
+#include <projectexplorer/kitaspects.h>
 #include <projectexplorer/project.h>
-#include <projectexplorer/projectnodes.h>
+#include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/projectmanager.h>
+#include <projectexplorer/projectnodes.h>
 #include <projectexplorer/projectwindow.h>
 #include <projectexplorer/target.h>
-#include <projectexplorer/projectexplorer.h>
-#include <projectexplorer/kitinformation.h>
 
 #include <texteditor/texteditoractionhandler.h>
 #include <texteditor/texteditor.h>
@@ -1387,7 +1387,7 @@ void PermissionsModel::removePermission(int index)
 QVariant PermissionsModel::data(const QModelIndex &index, int role) const
 {
     if (role != Qt::DisplayRole || !index.isValid())
-        return QVariant();
+        return {};
     return m_permissions[index.row()];
 }
 

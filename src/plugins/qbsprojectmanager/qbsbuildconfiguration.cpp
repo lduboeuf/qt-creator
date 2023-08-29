@@ -15,7 +15,7 @@
 #include <projectexplorer/buildsteplist.h>
 #include <projectexplorer/deployconfiguration.h>
 #include <projectexplorer/kit.h>
-#include <projectexplorer/kitinformation.h>
+#include <projectexplorer/kitaspects.h>
 #include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/projectexplorertr.h>
@@ -23,7 +23,7 @@
 #include <projectexplorer/target.h>
 #include <projectexplorer/toolchain.h>
 
-#include <qtsupport/qtkitinformation.h>
+#include <qtsupport/qtkitaspect.h>
 
 #include <utils/process.h>
 #include <utils/qtcassert.h>
@@ -152,7 +152,7 @@ void QbsBuildConfiguration::triggerReparseIfActive()
         m_buildSystem->delayParsing();
 }
 
-void QbsBuildConfiguration::fromMap(const QVariantMap &map)
+void QbsBuildConfiguration::fromMap(const Store &map)
 {
     BuildConfiguration::fromMap(map);
     if (hasError())

@@ -49,6 +49,9 @@ def get_args():
 
     return args
 
+def with_exe_ext(filepath):
+    return filepath + '.exe' if common.is_windows_platform() else filepath
+
 def which(program):
     def is_exe(fpath):
         return os.path.exists(fpath) and os.access(fpath, os.X_OK)
@@ -105,12 +108,15 @@ def is_ignored_windows_file(use_debug, basepath, filename):
 def ignored_qt_lib_files(path, filenames):
     # Qt ships some unneeded object files in the qml plugins
     # On Windows we also do not want to ship the wrong debug/release .dlls or .lib files etc
-    if not common.is_windows_platform():
+    # And get rid of debug info directories (.dSYM) on macOS
+    if common.is_linux_platform():
         return [fn for fn in filenames if fn.endswith('.cpp.o')]
+    if common.is_mac_platform():
+        return [fn for fn in filenames if fn.endswith('.dylib.dSYM') or fn.startswith('objects-')]
     return [fn for fn in filenames
             if fn.endswith('.cpp.obj') or is_ignored_windows_file(debug_build, path, fn)]
 
-def copy_qt_libs(target_qt_prefix_path, qt_bin_dir, qt_libs_dir, qt_plugin_dir, qt_qml_dir, plugins):
+def copy_qt_libs(target_qt_prefix_path, qt_bin_dir, qt_libs_dir):
     print("copying Qt libraries...")
 
     if common.is_windows_platform():
@@ -140,30 +146,81 @@ def copy_qt_libs(target_qt_prefix_path, qt_bin_dir, qt_libs_dir, qt_plugin_dir, 
         else:
             shutil.copy(library, lib_dest)
 
+
+def deploy_qtdiag(qtc_binary_path, qt_install):
+    print("Copying qtdiag")
+    qtdiag_src = os.path.join(qt_install.bin, with_exe_ext('qtdiag'))
+    destdir = (qtc_binary_path if common.is_windows_platform()
+              else os.path.join(qtc_binary_path, 'Contents', 'MacOS') if common.is_mac_platform()
+              else os.path.join(qtc_binary_path, '..', 'lib', 'Qt', 'bin'))
+    if not os.path.exists(destdir):
+        os.makedirs(destdir)
+    shutil.copy(qtdiag_src, destdir)
+    if common.is_mac_platform():
+        # fix RPATHs
+        qtdiag_dest = os.path.join(destdir, 'qtdiag')
+        subprocess.check_call(['xcrun', 'install_name_tool', '-add_rpath', '@loader_path/../Frameworks', qtdiag_dest])
+        subprocess.check_call(['xcrun', 'install_name_tool', '-delete_rpath', '@loader_path/../lib', qtdiag_dest])
+
+
+def deploy_plugins(qtc_binary_path, qt_install):
+    plugins = ['assetimporters', 'accessible', 'codecs', 'designer', 'iconengines', 'imageformats', 'platformthemes',
+               'platforminputcontexts', 'platforms', 'printsupport', 'qmltooling', 'sqldrivers', 'styles',
+               'xcbglintegrations',
+               'wayland-decoration-client',
+               'wayland-graphics-integration-client',
+               'wayland-shell-integration',
+               'tls'
+               ]
     print("Copying plugins:", plugins)
+    destdir = (os.path.join(qtc_binary_path, 'plugins') if common.is_windows_platform()
+               else os.path.join(qtc_binary_path, 'Contents', 'PlugIns') if common.is_mac_platform()
+               else os.path.join(qtc_binary_path, '..', 'lib', 'Qt', 'plugins'))
     for plugin in plugins:
-        target = os.path.join(target_qt_prefix_path, 'plugins', plugin)
+        target = os.path.join(destdir, plugin)
         if (os.path.exists(target)):
             shutil.rmtree(target)
-        pluginPath = os.path.join(qt_plugin_dir, plugin)
+        pluginPath = os.path.join(qt_install.plugins, plugin)
         if (os.path.exists(pluginPath)):
             print('{0} -> {1}'.format(pluginPath, target))
             common.copytree(pluginPath, target, ignore=ignored_qt_lib_files, symlinks=True)
 
-    if (os.path.exists(qt_qml_dir)):
-        print("Copying qt quick 2 imports")
-        target = os.path.join(target_qt_prefix_path, 'qml')
-        if (os.path.exists(target)):
-            shutil.rmtree(target)
-        print('{0} -> {1}'.format(qt_qml_dir, target))
-        common.copytree(qt_qml_dir, target, ignore=ignored_qt_lib_files, symlinks=True)
 
-    print("Copying qtdiag")
-    bin_dest = target_qt_prefix_path if common.is_windows_platform() else os.path.join(target_qt_prefix_path, 'bin')
-    qtdiag_src = os.path.join(qt_bin_dir, 'qtdiag.exe' if common.is_windows_platform() else 'qtdiag')
-    if not os.path.exists(bin_dest):
-        os.makedirs(bin_dest)
-    shutil.copy(qtdiag_src, bin_dest)
+def deploy_imports(qtc_binary_path, qt_install):
+    print("Copying qt quick 2 imports")
+    destdir = (os.path.join(qtc_binary_path, 'qml') if common.is_windows_platform()
+               else os.path.join(qtc_binary_path, 'Contents', 'Imports', 'qtquick2') if common.is_mac_platform()
+               else os.path.join(qtc_binary_path, '..', 'lib', 'Qt', 'qml'))
+    if (os.path.exists(destdir)):
+        shutil.rmtree(destdir)
+    print('{0} -> {1}'.format(qt_install.qml, destdir))
+    common.copytree(qt_install.qml, destdir, ignore=ignored_qt_lib_files, symlinks=True)
+
+
+def qt_conf_contents():
+    if common.is_linux_platform():
+        return '''[Paths]
+Prefix={0}
+Binaries=bin
+Libraries=lib
+Plugins=plugins
+Qml2Imports=qml
+'''
+    if common.is_windows_platform():
+        return '''[Paths]
+Prefix={0}
+Binaries=.
+Libraries=.
+Plugins=plugins
+Qml2Imports=qml
+'''
+    return '''[Paths]
+Prefix={0}
+Binaries=MacOS
+Libraries=Frameworks
+Plugins=PlugIns
+Qml2Imports=Imports/qtquick2
+'''
 
 
 def add_qt_conf(target_path, qt_prefix_path):
@@ -171,22 +228,36 @@ def add_qt_conf(target_path, qt_prefix_path):
     prefix_path = os.path.relpath(qt_prefix_path, target_path).replace('\\', '/')
     print('Creating qt.conf in "{0}":'.format(qtconf_filepath))
     f = open(qtconf_filepath, 'w')
-    f.write('[Paths]\n')
-    f.write('Prefix={0}\n'.format(prefix_path))
-    f.write('Binaries={0}\n'.format('bin' if common.is_linux_platform() else '.'))
-    f.write('Libraries={0}\n'.format('lib' if common.is_linux_platform() else '.'))
-    f.write('Plugins=plugins\n')
-    f.write('Qml2Imports=qml\n')
+    f.write(qt_conf_contents().format(prefix_path))
     f.close()
 
-def copy_translations(install_dir, qt_tr_dir):
-    translations = glob(os.path.join(qt_tr_dir, '*.qm'))
-    tr_dir = os.path.join(install_dir, 'share', 'qtcreator', 'translations')
 
-    print("copying translations...")
+def deploy_qt_conf_files(qtc_binary_path):
+    if common.is_linux_platform():
+        qt_prefix_path = os.path.join(qtc_binary_path, '..', 'lib', 'Qt')
+        add_qt_conf(os.path.join(qtc_binary_path, '..', 'libexec', 'qtcreator'), qt_prefix_path)
+        add_qt_conf(os.path.join(qtc_binary_path, '..', 'lib', 'Qt', 'bin'), qt_prefix_path) # qtdiag
+        add_qt_conf(qtc_binary_path, qt_prefix_path) # QtC itself
+    if common.is_windows_platform():
+        add_qt_conf(qtc_binary_path, qtc_binary_path) # QtC itself, libexec, and qtdiag etc
+    if common.is_mac_platform():
+        qt_prefix_path = os.path.join(qtc_binary_path, 'Contents')
+        qtc_resources_path = os.path.join(qtc_binary_path, 'Contents', 'Resources')
+        add_qt_conf(os.path.join(qtc_resources_path, 'libexec'), qt_prefix_path)
+        add_qt_conf(os.path.join(qtc_resources_path, 'libexec', 'ios'), qt_prefix_path)
+        # The Prefix path for a qt.conf in Contents/Resources/ is handled specially/funny by Qt,
+        # relative paths are resolved relative to Contents/, so we must enforces Prefix=.
+        add_qt_conf(qtc_resources_path, qtc_resources_path) # QtC itself
+
+
+def deploy_translations(qtc_binary_path, qt_install):
+    print("Copying translations...")
+    translations = glob(os.path.join(qt_install.translations, '*.qm'))
+    destdir = (os.path.join(qtc_binary_path, 'Contents', 'Resources', 'translations') if common.is_mac_platform()
+               else os.path.join(qtc_binary_path, '..', 'share', 'qtcreator', 'translations'))
     for translation in translations:
-        print(translation, '->', tr_dir)
-        shutil.copy(translation, tr_dir)
+        print(translation, '->', destdir)
+        shutil.copy(translation, destdir)
 
 def copyPreservingLinks(source, destination):
     if os.path.islink(source):
@@ -198,47 +269,52 @@ def copyPreservingLinks(source, destination):
     else:
         shutil.copy(source, destination)
 
-def deploy_clang(install_dir, llvm_install_dir, chrpath_bin):
+def deploy_clang(qtc_binary_path, llvm_install_dir, chrpath_bin):
+    print("Copying clang...")
+
     # contains pairs of (source, target directory)
     deployinfo = []
     resourcesource = os.path.join(llvm_install_dir, 'lib', 'clang')
     if common.is_windows_platform():
-        clangbindirtarget = os.path.join(install_dir, 'bin', 'clang', 'bin')
-        if not os.path.exists(clangbindirtarget):
-            os.makedirs(clangbindirtarget)
-        clanglibdirtarget = os.path.join(install_dir, 'bin', 'clang', 'lib')
-        if not os.path.exists(clanglibdirtarget):
-            os.makedirs(clanglibdirtarget)
-        for binary in ['clangd', 'clang-tidy', 'clazy-standalone', 'clang-format']:
-            binary_filepath = os.path.join(llvm_install_dir, 'bin', binary + '.exe')
-            if os.path.exists(binary_filepath):
-                deployinfo.append((binary_filepath, clangbindirtarget))
-        resourcetarget = os.path.join(clanglibdirtarget, 'clang')
-    else:
-        # clang binaries -> clang libexec
-        clangbinary_targetdir = os.path.join(install_dir, 'libexec', 'qtcreator', 'clang', 'bin')
-        if not os.path.exists(clangbinary_targetdir):
-            os.makedirs(clangbinary_targetdir)
-        for binary in ['clangd', 'clang-tidy', 'clazy-standalone', 'clang-format']:
-            binary_filepath = os.path.join(llvm_install_dir, 'bin', binary)
-            if os.path.exists(binary_filepath):
-                deployinfo.append((binary_filepath, clangbinary_targetdir))
-                # add link target if binary is actually a symlink (to a binary in the same directory)
-                if os.path.islink(binary_filepath):
-                    linktarget = os.readlink(binary_filepath)
-                    deployinfo.append((os.path.join(os.path.dirname(binary_filepath), linktarget),
-                                       os.path.join(clangbinary_targetdir, linktarget)))
-        clanglibs_targetdir = os.path.join(install_dir, 'libexec', 'qtcreator', 'clang', 'lib')
-        # support libraries (for clazy) -> clang libexec
+        clang_targetdir = os.path.join(qtc_binary_path, 'clang')
+        clangbinary_targetdir = os.path.join(clang_targetdir, 'bin')
+        resourcetarget = os.path.join(clang_targetdir, 'lib', 'clang')
+    elif common.is_linux_platform():
+        clang_targetdir = os.path.join(qtc_binary_path, '..', 'libexec', 'qtcreator', 'clang')
+        clangbinary_targetdir = os.path.join(clang_targetdir, 'bin')
+        resourcetarget = os.path.join(clang_targetdir, 'lib', 'clang')
+        # ClazyPlugin. On RHEL ClazyPlugin is in lib64, so check both
+        clanglibs_targetdir = os.path.join(clang_targetdir, 'lib')
         if not os.path.exists(clanglibs_targetdir):
             os.makedirs(clanglibs_targetdir)
-        # on RHEL ClazyPlugin is in lib64
         for lib_pattern in ['lib64/ClazyPlugin.so', 'lib/ClazyPlugin.so']:
             for lib in glob(os.path.join(llvm_install_dir, lib_pattern)):
                 deployinfo.append((lib, clanglibs_targetdir))
-        resourcetarget = os.path.join(install_dir, 'libexec', 'qtcreator', 'clang', 'lib', 'clang')
+    else:
+        clang_targetdir = os.path.join(qtc_binary_path, 'Contents', 'Resources', 'libexec', 'clang')
+        clanglibs_targetdir = os.path.join(clang_targetdir, 'lib')
+        clangbinary_targetdir = os.path.join(clang_targetdir, 'bin')
+        resourcetarget = os.path.join(clang_targetdir, 'lib', 'clang')
+        # ClazyPlugin
+        clanglibs_targetdir = os.path.join(clang_targetdir, 'lib')
+        if not os.path.exists(clanglibs_targetdir):
+            os.makedirs(clanglibs_targetdir)
+        clazy_plugin = os.path.join(llvm_install_dir, 'lib', 'ClazyPlugin.dylib')
+        deployinfo.append((clazy_plugin, clanglibs_targetdir))
 
-    print("copying clang...")
+    # collect binaries
+    if not os.path.exists(clangbinary_targetdir):
+        os.makedirs(clangbinary_targetdir)
+    for binary in ['clangd', 'clang-tidy', 'clazy-standalone', 'clang-format']:
+        binary_filepath = os.path.join(llvm_install_dir, 'bin', with_exe_ext(binary))
+        if os.path.exists(binary_filepath):
+            deployinfo.append((binary_filepath, clangbinary_targetdir))
+            # add link target if binary is actually a symlink (to a binary in the same directory)
+            if not common.is_windows_platform() and os.path.islink(binary_filepath):
+                linktarget = os.readlink(binary_filepath)
+                deployinfo.append((os.path.join(os.path.dirname(binary_filepath), linktarget),
+                                   os.path.join(clangbinary_targetdir, linktarget)))
+
     for source, target in deployinfo:
         print(source, '->', target)
         copyPreservingLinks(source, target)
@@ -247,7 +323,6 @@ def deploy_clang(install_dir, llvm_install_dir, chrpath_bin):
         # libclang was statically compiled, so there is no need for the RPATHs
         # and they are confusing when fixing RPATHs later in the process.
         # Also fix clazy-standalone RPATH.
-        print("fixing Clang RPATHs...")
         for source, target in deployinfo:
             filename = os.path.basename(source)
             targetfilepath = target if not os.path.isdir(target) else os.path.join(target, filename)
@@ -256,6 +331,12 @@ def deploy_clang(install_dir, llvm_install_dir, chrpath_bin):
             elif not os.path.islink(target):
                 targetfilepath = target if not os.path.isdir(target) else os.path.join(target, os.path.basename(source))
                 subprocess.check_call([chrpath_bin, '-d', targetfilepath])
+
+    if common.is_mac_platform():
+        # fix RPATH of clazy-standalone
+        clazy_dest = os.path.join(clangbinary_targetdir, 'clazy-standalone')
+        subprocess.call(['xcrun', 'install_name_tool', '-add_rpath', '@loader_path/../lib', clazy_dest], stderr=subprocess.DEVNULL)
+        subprocess.call(['xcrun', 'install_name_tool', '-delete_rpath', '/Users/qt/work/build/libclang/lib', clazy_dest], stderr=subprocess.DEVNULL)
 
     print(resourcesource, '->', resourcetarget)
     if (os.path.exists(resourcetarget)):
@@ -310,18 +391,54 @@ def deploy_elfutils(qtc_install_dir, chrpath_bin, args):
         print(file, '->', backends_install_path)
         shutil.copy(file, backends_install_path)
 
-def deploy_mac(args):
-    (_, qt_install) = get_qt_install_info(args.qmake_binary)
+def deploy_qt_mac(qtc_binary_path, qt_install):
+    # This runs macdeployqt
+    # Collect things to pass via -executable
+    libexec_path = os.path.join(qtc_binary_path, 'Contents', 'Resources', 'libexec')
+    bin_path = os.path.join(qtc_binary_path, 'Contents', 'MacOS')
+    plugins_path = os.path.join(qtc_binary_path, 'Contents', 'PlugIns')
+    frameworks_path = os.path.join(qtc_binary_path, 'Contents', 'Frameworks')
+    additional_paths = []
+    # Qbs
+    apps = ['qbs', 'qbs-config', 'qbs-config-ui', 'qbs-setup-android', 'qbs-setup-qt',
+            'qbs-setup-toolchains', 'qbs-create-project']
+    for app in apps:
+        additional_paths.append(os.path.join(bin_path, app))
+    additional_paths.append(os.path.join(libexec_path, 'qbs_processlauncher'))
+    # qml2puppet
+    puppets = glob(os.path.join(libexec_path, 'qml2puppet*'))
+    for puppet in puppets:
+        additional_paths.append(puppet)
+    # qtdiag
+    additional_paths.append(os.path.join(bin_path, 'qtdiag'))
+    # other libexec
+    additional_paths.append(os.path.join(libexec_path, 'sdktool'))
+    additional_paths.append(os.path.join(libexec_path, 'qtpromaker'))
+    additional_paths.append(os.path.join(libexec_path, 'buildoutputparser'))
+    additional_paths.append(os.path.join(libexec_path, 'cpaster'))
+    additional_paths.append(os.path.join(libexec_path, 'ios', 'iostool'))
 
-    env = dict(os.environ)
-    if args.llvm_path:
-        env['LLVM_INSTALL_DIR'] = args.llvm_path
+    existing_additional_paths = [p for p in additional_paths if os.path.exists(p)]
+    macdeployqt = os.path.join(qt_install.bin, 'macdeployqt')
+    print('Running macdeployqt (' + macdeployqt + ')')
+    print('- with additional paths:', existing_additional_paths)
+    executable_args = ['-executable='+path for path in existing_additional_paths]
+    subprocess.check_call([macdeployqt, qtc_binary_path] + executable_args)
 
-    script_path = os.path.dirname(os.path.realpath(__file__))
-    deployqtHelper_mac = os.path.join(script_path, 'deployqtHelper_mac.sh')
-    common.check_print_call([deployqtHelper_mac, args.qtcreator_binary, qt_install.bin,
-                             qt_install.translations, qt_install.plugins, qt_install.qml],
-                            env=env)
+    # clean up some things that might have been deployed, but we don't want
+    to_remove = [
+        os.path.join(plugins_path, 'tls', 'libqopensslbackend.dylib'),
+        os.path.join(plugins_path, 'sqldrivers', 'libqsqlpsql.dylib'),
+        os.path.join(plugins_path, 'sqldrivers', 'libqsqlodbc.dylib'),
+    ]
+    to_remove.extend(glob(os.path.join(frameworks_path, 'libpq.*dylib')))
+    to_remove.extend(glob(os.path.join(frameworks_path, 'libssl.*dylib')))
+    to_remove.extend(glob(os.path.join(frameworks_path, 'libcrypto.*dylib')))
+    for path in to_remove:
+        if os.path.isfile(path):
+            print('- Removing ' + path)
+            os.remove(path)
+
 
 def get_qt_install_info(qmake_binary):
     qt_install_info = common.get_qt_install_info(qmake_binary)
@@ -336,19 +453,6 @@ def get_qt_install_info(qmake_binary):
 
 def main():
     args = get_args()
-    if common.is_mac_platform():
-        deploy_mac(args)
-        return
-
-    (qt_install_info, qt_install) = get_qt_install_info(args.qmake_binary)
-
-    qtcreator_binary_path = os.path.dirname(args.qtcreator_binary)
-    install_dir = os.path.abspath(os.path.join(qtcreator_binary_path, '..'))
-    if common.is_linux_platform():
-        qt_deploy_prefix = os.path.join(install_dir, 'lib', 'Qt')
-    else:
-        qt_deploy_prefix = os.path.join(install_dir, 'bin')
-
     chrpath_bin = None
     if common.is_linux_platform():
         chrpath_bin = which('chrpath')
@@ -356,35 +460,43 @@ def main():
             print("Cannot find required binary 'chrpath'.")
             sys.exit(2)
 
-    plugins = ['assetimporters', 'accessible', 'codecs', 'designer', 'iconengines', 'imageformats', 'platformthemes',
-               'platforminputcontexts', 'platforms', 'printsupport', 'qmltooling', 'sqldrivers', 'styles',
-               'xcbglintegrations',
-               'wayland-decoration-client',
-               'wayland-graphics-integration-client',
-               'wayland-shell-integration',
-               'tls'
-               ]
-
     if common.is_windows_platform():
         global debug_build
         debug_build = is_debug(args.qtcreator_binary)
 
-    if common.is_windows_platform():
-        copy_qt_libs(qt_deploy_prefix, qt_install.bin, qt_install.bin, qt_install.plugins, qt_install.qml, plugins)
-    else:
-        copy_qt_libs(qt_deploy_prefix, qt_install.bin, qt_install.lib, qt_install.plugins, qt_install.qml, plugins)
-    copy_translations(install_dir, qt_install.translations)
-    if args.llvm_path:
-        deploy_clang(install_dir, args.llvm_path, chrpath_bin)
+    (qt_install_info, qt_install) = get_qt_install_info(args.qmake_binary)
+    # <qtc>/bin for Win/Lin, <path>/<appname>.app for macOS
+    qtcreator_binary_path = (args.qtcreator_binary if common.is_mac_platform()
+                             else os.path.dirname(args.qtcreator_binary))
 
-    if args.elfutils_path:
-        deploy_elfutils(install_dir, chrpath_bin, args)
-    if not common.is_windows_platform():
-        print("fixing rpaths...")
-        common.fix_rpaths(install_dir, os.path.join(qt_deploy_prefix, 'lib'), qt_install_info, chrpath_bin)
-        add_qt_conf(os.path.join(install_dir, 'libexec', 'qtcreator'), qt_deploy_prefix) # e.g. for qml2puppet
-        add_qt_conf(os.path.join(qt_deploy_prefix, 'bin'), qt_deploy_prefix) # e.g. qtdiag
-    add_qt_conf(os.path.join(install_dir, 'bin'), qt_deploy_prefix)
+    deploy_qtdiag(qtcreator_binary_path, qt_install)
+    deploy_plugins(qtcreator_binary_path, qt_install)
+    deploy_imports(qtcreator_binary_path, qt_install)
+    deploy_translations(qtcreator_binary_path, qt_install)
+    deploy_qt_conf_files(qtcreator_binary_path)
+    if args.llvm_path:
+        deploy_clang(qtcreator_binary_path, args.llvm_path, chrpath_bin)
+
+    if common.is_mac_platform():
+        deploy_qt_mac(qtcreator_binary_path, qt_install)
+    else:
+        install_dir = os.path.abspath(os.path.join(qtcreator_binary_path, '..'))
+        if common.is_linux_platform():
+            qt_deploy_prefix = os.path.join(install_dir, 'lib', 'Qt')
+        else:
+            qt_deploy_prefix = os.path.join(install_dir, 'bin')
+
+        if common.is_windows_platform():
+            copy_qt_libs(qt_deploy_prefix, qt_install.bin, qt_install.bin)
+        else:
+            copy_qt_libs(qt_deploy_prefix, qt_install.bin, qt_install.lib)
+
+        if args.elfutils_path:
+            deploy_elfutils(install_dir, chrpath_bin, args)
+        if not common.is_windows_platform():
+            print("fixing rpaths...")
+            common.fix_rpaths(install_dir, os.path.join(qt_deploy_prefix, 'lib'), qt_install_info, chrpath_bin)
+
 
 if __name__ == "__main__":
     main()

@@ -5,26 +5,21 @@
 
 #include "callgrindcostdelegate.h"
 #include "valgrindtr.h"
-
-#include <coreplugin/icore.h>
+#include "xmlprotocol/error.h"
 
 #include <coreplugin/dialogs/ioptionspage.h>
+
 #include <debugger/analyzer/analyzericons.h>
 #include <debugger/debuggertr.h>
 
 #include <utils/algorithm.h>
 #include <utils/layoutbuilder.h>
 #include <utils/qtcassert.h>
-#include <utils/treemodel.h>
 #include <utils/utilsicons.h>
 
-#include <valgrind/xmlprotocol/error.h>
-
-#include <QDebug>
 #include <QListView>
 #include <QMetaEnum>
 #include <QPushButton>
-#include <QSettings>
 #include <QStandardItemModel>
 
 using namespace Utils;
@@ -151,12 +146,12 @@ void SuppressionAspect::addToLayout(Layouting::LayoutItem &parent)
     parent.addItem(Span { 2, group });
 }
 
-void SuppressionAspect::fromMap(const QVariantMap &map)
+void SuppressionAspect::fromMap(const Store &map)
 {
     BaseAspect::fromMap(map); // FIXME Looks wrong, as it skips the intermediate level
 }
 
-void SuppressionAspect::toMap(QVariantMap &map) const
+void SuppressionAspect::toMap(Store &map) const
 {
     BaseAspect::toMap(map);
 }
@@ -192,7 +187,7 @@ ValgrindSettings::ValgrindSettings(bool global)
     // Note that this is used twice, once for project settings in the .user files
     // and once for global settings in QtCreator.ini. This uses intentionally
     // the same key to facilitate copying using fromMap/toMap.
-    QString base = "Analyzer.Valgrind.";
+    Key base = "Analyzer.Valgrind.";
 
     valgrindExecutable.setSettingsKey(base + "ValgrindExecutable");
     valgrindExecutable.setDefaultValue("valgrind");

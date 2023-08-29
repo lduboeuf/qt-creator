@@ -3,10 +3,10 @@
 
 #pragma once
 
+#include "valgrindprocess.h"
 #include "valgrindsettings.h"
 
 #include <projectexplorer/runcontrol.h>
-#include <valgrind/valgrindrunner.h>
 
 #include <QFutureInterface>
 
@@ -26,7 +26,7 @@ protected:
 
     ValgrindSettings m_settings{false};
     QFutureInterface<void> m_progress;
-    ValgrindRunner m_runner;
+    ValgrindProcess m_runner;
 
 private:
     void handleProgressCanceled();

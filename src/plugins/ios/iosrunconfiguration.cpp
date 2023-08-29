@@ -13,7 +13,7 @@
 #include <projectexplorer/buildsteplist.h>
 #include <projectexplorer/deployconfiguration.h>
 #include <projectexplorer/devicesupport/devicemanager.h>
-#include <projectexplorer/kitinformation.h>
+#include <projectexplorer/kitaspects.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/projectnodes.h>
 #include <projectexplorer/runconfigurationaspects.h>
@@ -40,7 +40,7 @@ using namespace Utils;
 
 namespace Ios::Internal {
 
-const QLatin1String deviceTypeKey("Ios.device_type");
+const char deviceTypeKey[] = "Ios.device_type";
 
 static QString displayName(const SimulatorInfo &device)
 {
@@ -206,19 +206,19 @@ FilePath IosRunConfiguration::localExecutable() const
     return bundleDirectory().pathAppended(applicationName());
 }
 
-void IosDeviceTypeAspect::fromMap(const QVariantMap &map)
+void IosDeviceTypeAspect::fromMap(const Store &map)
 {
     bool deviceTypeIsInt;
     map.value(deviceTypeKey).toInt(&deviceTypeIsInt);
-    if (deviceTypeIsInt || !m_deviceType.fromMap(map.value(deviceTypeKey).toMap()))
+    if (deviceTypeIsInt || !m_deviceType.fromMap(storeFromVariant(map.value(deviceTypeKey))))
         updateDeviceType();
 
     m_runConfiguration->update();
 }
 
-void IosDeviceTypeAspect::toMap(QVariantMap &map) const
+void IosDeviceTypeAspect::toMap(Store &map) const
 {
-    map.insert(deviceTypeKey, deviceType().toMap());
+    map.insert(deviceTypeKey, QVariant::fromValue(deviceType().toMap()));
 }
 
 QString IosRunConfiguration::disabledReason() const

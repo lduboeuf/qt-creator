@@ -18,7 +18,7 @@
 #include <projectexplorer/devicesupport/devicemanager.h>
 #include <projectexplorer/devicesupport/idevicewidget.h>
 #include <projectexplorer/devicesupport/processlist.h>
-#include <projectexplorer/kitinformation.h>
+#include <projectexplorer/kitaspects.h>
 #include <projectexplorer/kitmanager.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/projectexplorertr.h>
@@ -27,7 +27,7 @@
 #include <projectexplorer/toolchainmanager.h>
 
 #include <qtsupport/baseqtversion.h>
-#include <qtsupport/qtkitinformation.h>
+#include <qtsupport/qtkitaspect.h>
 #include <qtsupport/qtversionfactory.h>
 #include <qtsupport/qtversionmanager.h>
 
@@ -778,7 +778,7 @@ const char DockerDeviceKeepEntryPoint[] = "DockerDeviceKeepEntryPoint";
 const char DockerDeviceEnableLldbFlags[] = "DockerDeviceEnableLldbFlags";
 const char DockerDeviceClangDExecutable[] = "DockerDeviceClangDExecutable";
 
-void DockerDevice::fromMap(const QVariantMap &map)
+void DockerDevice::fromMap(const Store &map)
 {
     ProjectExplorer::IDevice::fromMap(map);
     DockerDeviceData data;
@@ -795,9 +795,9 @@ void DockerDevice::fromMap(const QVariantMap &map)
     d->setData(data);
 }
 
-QVariantMap DockerDevice::toMap() const
+Store DockerDevice::toMap() const
 {
-    QVariantMap map = ProjectExplorer::IDevice::toMap();
+    Store map = ProjectExplorer::IDevice::toMap();
     DockerDeviceData data = d->data();
 
     map.insert(DockerDeviceDataRepoKey, data.repo);

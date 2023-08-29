@@ -5,8 +5,8 @@
 
 #include "idevice.h"
 #include "processlist.h"
+#include "../kitaspects.h"
 #include "../kitchooser.h"
-#include "../kitinformation.h"
 #include "../projectexplorertr.h"
 
 #include <utils/fancylineedit.h>
@@ -111,7 +111,7 @@ DeviceProcessesDialogPrivate::DeviceProcessesDialogPrivate(KitChooser *chooser, 
     processFilterLineEdit = new FancyLineEdit(q);
     processFilterLineEdit->setPlaceholderText(Tr::tr("Filter"));
     processFilterLineEdit->setFocus(Qt::TabFocusReason);
-    processFilterLineEdit->setHistoryCompleter(QLatin1String("DeviceProcessDialogFilter"),
+    processFilterLineEdit->setHistoryCompleter("DeviceProcessDialogFilter",
         true /*restoreLastItemFromHistory*/);
     processFilterLineEdit->setFiltering(true);
 

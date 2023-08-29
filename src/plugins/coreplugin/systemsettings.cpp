@@ -13,7 +13,6 @@
 #include "icore.h"
 #include "iversioncontrol.h"
 #include "mainwindow.h"
-#include "patchtool.h"
 #include "vcsmanager.h"
 
 #include <utils/algorithm.h>
@@ -27,15 +26,12 @@
 #include <utils/terminalcommand.h>
 #include <utils/unixutils.h>
 
-#include <QCheckBox>
 #include <QComboBox>
-#include <QCoreApplication>
 #include <QGuiApplication>
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QSettings>
-#include <QSpinBox>
 #include <QToolButton>
 
 using namespace Utils;
@@ -70,11 +66,17 @@ SystemSettings::SystemSettings()
 {
     setAutoApply(false);
 
+    patchCommand.setSettingsKey("General/PatchCommand");
+    patchCommand.setDefaultValue("patch");
+    patchCommand.setExpectedKind(PathChooser::ExistingCommand);
+    patchCommand.setHistoryCompleter("General.PatchCommand.History");
+    patchCommand.setLabelText(Tr::tr("Patch command:"));
+    patchCommand.setToolTip(Tr::tr("Command used for reverting diff chunks."));
+
     autoSaveModifiedFiles.setSettingsKey("EditorManager/AutoSaveEnabled");
     autoSaveModifiedFiles.setDefaultValue(true);
     autoSaveModifiedFiles.setLabelText(Tr::tr("Auto-save modified files"));
-    autoSaveModifiedFiles.setLabelPlacement(
-        BoolAspect::LabelPlacement::AtCheckBoxWithoutDummyLabel);
+    autoSaveModifiedFiles.setLabelPlacement(BoolAspect::LabelPlacement::Compact);
     autoSaveModifiedFiles.setToolTip(
         Tr::tr("Automatically creates temporary copies of modified files. "
                "If %1 is restarted after a crash or power failure, it asks whether to "
@@ -90,8 +92,7 @@ SystemSettings::SystemSettings()
 
     autoSaveAfterRefactoring.setSettingsKey("EditorManager/AutoSaveAfterRefactoring");
     autoSaveAfterRefactoring.setDefaultValue(true);
-    autoSaveAfterRefactoring.setLabelPlacement(
-        BoolAspect::LabelPlacement::AtCheckBoxWithoutDummyLabel);
+    autoSaveAfterRefactoring.setLabelPlacement(BoolAspect::LabelPlacement::Compact);
     autoSaveAfterRefactoring.setLabelText(Tr::tr("Auto-save files after refactoring"));
     autoSaveAfterRefactoring.setToolTip(
         Tr::tr("Automatically saves all open files affected by a refactoring operation,\n"
@@ -100,8 +101,7 @@ SystemSettings::SystemSettings()
     autoSuspendEnabled.setSettingsKey("EditorManager/AutoSuspendEnabled");
     autoSuspendEnabled.setDefaultValue(true);
     autoSuspendEnabled.setLabelText(Tr::tr("Auto-suspend unmodified files"));
-    autoSuspendEnabled.setLabelPlacement(
-        BoolAspect::LabelPlacement::AtCheckBoxWithoutDummyLabel);
+    autoSuspendEnabled.setLabelPlacement(BoolAspect::LabelPlacement::Compact);
     autoSuspendEnabled.setToolTip(
         Tr::tr("Automatically free resources of old documents that are not visible and not "
                "modified. They stay visible in the list of open documents."));
@@ -117,8 +117,7 @@ SystemSettings::SystemSettings()
 
     warnBeforeOpeningBigFiles.setSettingsKey("EditorManager/WarnBeforeOpeningBigTextFiles");
     warnBeforeOpeningBigFiles.setDefaultValue(true);
-    warnBeforeOpeningBigFiles.setLabelPlacement(
-        BoolAspect::LabelPlacement::AtCheckBoxWithoutDummyLabel);
+    warnBeforeOpeningBigFiles.setLabelPlacement(BoolAspect::LabelPlacement::Compact);
     warnBeforeOpeningBigFiles.setLabelText(Tr::tr("Warn before opening text files greater than"));
 
     bigFileSizeLimitInMB.setSettingsKey("EditorManager/BigTextFileSizeLimitInMB");
@@ -141,7 +140,7 @@ SystemSettings::SystemSettings()
 
     askBeforeExit.setSettingsKey("AskBeforeExit");
     askBeforeExit.setLabelText(Tr::tr("Ask for confirmation before exiting"));
-    askBeforeExit.setLabelPlacement(BoolAspect::LabelPlacement::AtCheckBoxWithoutDummyLabel);
+    askBeforeExit.setLabelPlacement(BoolAspect::LabelPlacement::Compact);
 
 #ifdef ENABLE_CRASHPAD
     enableCrashReporting.setSettingsKey("CrashReportingEnabled");
@@ -167,7 +166,6 @@ public:
         , m_terminalComboBox(new QComboBox)
         , m_terminalOpenArgs(new QLineEdit)
         , m_terminalExecuteArgs(new QLineEdit)
-        , m_patchChooser(new Utils::PathChooser)
         , m_environmentChangesLabel(new Utils::ElidingLabel)
         , m_clearCrashReportsButton(new QPushButton(Tr::tr("Clear Local Crash Reports")))
         , m_crashReportsSizeText(new QLabel)
@@ -199,7 +197,6 @@ public:
         helpCrashReportingButton->setText(Tr::tr("?"));
         auto resetTerminalButton = new QPushButton(Tr::tr("Reset"));
         resetTerminalButton->setToolTip(Tr::tr("Reset to default.", "Terminal"));
-        auto patchCommandLabel = new QLabel(Tr::tr("Patch command:"));
         auto environmentButton = new QPushButton(Tr::tr("Change..."));
         environmentButton->setSizePolicy(QSizePolicy::Fixed,
                                          environmentButton->sizePolicy().verticalPolicy());
@@ -222,7 +219,7 @@ public:
                                   resetFileBrowserButton,
                                   helpExternalFileBrowserButton})});
         }
-        form.addRow({patchCommandLabel, Span(2, m_patchChooser)});
+        form.addRow({Span(3, s.patchCommand)});
         if (HostOsInfo::isMacHost()) {
             form.addRow({fileSystemCaseSensitivityLabel,
                          Span(2, Row{m_fileSystemCaseSensitivityChooser, st})});
@@ -261,13 +258,6 @@ public:
         if (HostOsInfo::isAnyUnixHost() && !HostOsInfo::isMacHost()) {
             m_externalFileBrowserEdit->setText(UnixUtils::fileBrowser(ICore::settings()));
         }
-
-        const QString patchToolTip = Tr::tr("Command used for reverting diff chunks.");
-        patchCommandLabel->setToolTip(patchToolTip);
-        m_patchChooser->setToolTip(patchToolTip);
-        m_patchChooser->setExpectedKind(PathChooser::ExistingCommand);
-        m_patchChooser->setHistoryCompleter(QLatin1String("General.PatchCommand.History"));
-        m_patchChooser->setFilePath(PatchTool::patchCommand());
 
 #ifdef ENABLE_CRASHPAD
         if (s.showCrashButton()) {
@@ -378,7 +368,6 @@ private:
     QComboBox *m_terminalComboBox;
     QLineEdit *m_terminalOpenArgs;
     QLineEdit *m_terminalExecuteArgs;
-    Utils::PathChooser *m_patchChooser;
     Utils::ElidingLabel *m_environmentChangesLabel;
     QPushButton *m_clearCrashReportsButton;
     QLabel *m_crashReportsSizeText;
@@ -402,7 +391,6 @@ void SystemSettingsWidget::apply()
             UnixUtils::setFileBrowser(settings, m_externalFileBrowserEdit->text());
         }
     }
-    PatchTool::setPatchCommand(m_patchChooser->filePath());
 
     if (HostOsInfo::isMacHost()) {
         const Qt::CaseSensitivity sensitivity = EditorManagerPrivate::readFileSystemSensitivity(
@@ -444,7 +432,7 @@ void SystemSettingsWidget::updatePath()
 {
     Environment env;
     env.appendToPath(VcsManager::additionalToolsPath());
-    m_patchChooser->setEnvironment(env);
+    systemSettings().patchCommand.setEnvironment(env);
 }
 
 void SystemSettingsWidget::updateEnvironmentChangesLabel()

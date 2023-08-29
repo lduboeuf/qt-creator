@@ -14,14 +14,16 @@
 #include <functional>
 #include <memory>
 
-namespace Utils { class OutputFormatter; }
+namespace Utils {
+class OutputFormatter;
+class ProcessRunData;
+}
 
 namespace ProjectExplorer {
 class BuildConfiguration;
 class BuildSystem;
 class GlobalOrProjectAspect;
 class ProjectNode;
-class Runnable;
 class RunConfigurationFactory;
 class RunConfiguration;
 class RunConfigurationCreationInfo;
@@ -58,9 +60,9 @@ public:
 
 protected:
     friend class RunConfiguration;
-    void fromMap(const QVariantMap &map) override;
-    void toMap(QVariantMap &data) const override;
-    void toActiveMap(QVariantMap &data) const override;
+    void fromMap(const Utils::Store &map) override;
+    void toMap(Utils::Store &data) const override;
+    void toActiveMap(Utils::Store &data) const override;
 
 private:
     bool m_useGlobalSettings = false;
@@ -92,10 +94,11 @@ public:
     Utils::CommandLine commandLine() const;
     bool isPrintEnvironmentEnabled() const;
 
-    using RunnableModifier = std::function<void(Runnable &)>;
+    using RunnableModifier = std::function<void(Utils::ProcessRunData &)>;
     void setRunnableModifier(const RunnableModifier &extraModifier);
 
-    virtual Runnable runnable() const;
+    virtual Utils::ProcessRunData runnable() const;
+    virtual QVariantHash extraData() const;
 
     // Return a handle to the build system target that created this run configuration.
     // May return an empty string if no target built the executable!
@@ -119,7 +122,7 @@ public:
         addAspectFactory([](Target *target) { return new T(target); });
     }
 
-    QMap<Utils::Id, QVariantMap> settingsData() const; // FIXME: Merge into aspectData?
+    QMap<Utils::Id, Utils::Store> settingsData() const; // FIXME: Merge into aspectData?
     Utils::AspectContainerData aspectData() const;
 
     void update();
@@ -142,9 +145,9 @@ protected:
 
 private:
     // Any additional data should be handled by aspects.
-    void fromMap(const QVariantMap &map) final;
-    void toMap(QVariantMap &map) const final;
-    void toMapSimple(QVariantMap &map) const;
+    void fromMap(const Utils::Store &map) final;
+    void toMap(Utils::Store &map) const final;
+    void toMapSimple(Utils::Store &map) const;
 
     static void addAspectFactory(const AspectFactory &aspectFactory);
 
@@ -157,7 +160,7 @@ private:
     RunnableModifier m_runnableModifier;
     Updater m_updater;
     Utils::MacroExpander m_expander;
-    QVariantMap m_pristineState;
+    Utils::Store m_pristineState;
     bool m_customized = false;
 };
 
@@ -184,7 +187,7 @@ public:
     RunConfigurationFactory operator=(const RunConfigurationFactory &) = delete;
     virtual ~RunConfigurationFactory();
 
-    static RunConfiguration *restore(Target *parent, const QVariantMap &map);
+    static RunConfiguration *restore(Target *parent, const Utils::Store &map);
     static RunConfiguration *clone(Target *parent, RunConfiguration *source);
     static const QList<RunConfigurationCreationInfo> creatorsForTarget(Target *parent);
 

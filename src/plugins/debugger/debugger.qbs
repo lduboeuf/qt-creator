@@ -47,7 +47,7 @@ Project {
                 "debuggerinternalconstants.h",
                 "debuggeritem.cpp", "debuggeritem.h",
                 "debuggeritemmanager.cpp", "debuggeritemmanager.h",
-                "debuggerkitinformation.cpp", "debuggerkitinformation.h",
+                "debuggerkitaspect.cpp", "debuggerkitaspect.h",
                 "debuggermainwindow.cpp", "debuggermainwindow.h",
                 "debuggerplugin.cpp", "debuggerplugin.h",
                 "debuggerprotocol.cpp", "debuggerprotocol.h",
@@ -124,7 +124,12 @@ Project {
         Group {
             name: "dap"
             prefix: "dap/"
-            files: ["dapengine.cpp", "dapengine.h"]
+            files: [
+                "cmakedapengine.cpp", "cmakedapengine.h",
+                "dapclient.cpp", "dapclient.h",
+                "dapengine.cpp", "dapengine.h",
+                "gdbdapengine.cpp", "gdbdapengine.h",
+            ]
         }
 
         Group {

@@ -4,7 +4,6 @@
 #include "mesonbuildsystem.h"
 
 #include "kitdata.h"
-#include "kithelper.h"
 #include "mesonbuildconfiguration.h"
 #include "mesonprojectmanagertr.h"
 #include "mesontoolkitaspect.h"
@@ -13,14 +12,14 @@
 #include <coreplugin/icore.h>
 
 #include <projectexplorer/buildconfiguration.h>
-#include <projectexplorer/kitinformation.h>
+#include <projectexplorer/kitaspects.h>
 #include <projectexplorer/kitmanager.h>
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/taskhub.h>
 #include <projectexplorer/toolchain.h>
 
 #include <qtsupport/qtcppkitinfo.h>
-#include <qtsupport/qtkitinformation.h>
+#include <qtsupport/qtkitaspect.h>
 
 #include <utils/macroexpander.h>
 #include <utils/qtcassert.h>

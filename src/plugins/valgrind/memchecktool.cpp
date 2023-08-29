@@ -5,7 +5,7 @@
 
 #include "memcheckerrorview.h"
 #include "valgrindengine.h"
-#include "valgrindrunner.h"
+#include "valgrindprocess.h"
 #include "valgrindsettings.h"
 #include "valgrindtr.h"
 
@@ -13,30 +13,8 @@
 #include "xmlprotocol/error.h"
 #include "xmlprotocol/errorlistmodel.h"
 #include "xmlprotocol/frame.h"
+#include "xmlprotocol/parser.h"
 #include "xmlprotocol/stack.h"
-#include "xmlprotocol/threadedparser.h"
-
-#include <debugger/debuggerkitinformation.h>
-#include <debugger/debuggerruncontrol.h>
-#include <debugger/analyzer/analyzerconstants.h>
-#include <debugger/analyzer/analyzermanager.h>
-#include <debugger/analyzer/startremotedialog.h>
-
-#include <projectexplorer/buildconfiguration.h>
-#include <projectexplorer/deploymentdata.h>
-#include <projectexplorer/devicesupport/devicemanager.h>
-#include <projectexplorer/kitinformation.h>
-#include <projectexplorer/project.h>
-#include <projectexplorer/projectexplorer.h>
-#include <projectexplorer/projectexplorerconstants.h>
-#include <projectexplorer/projectmanager.h>
-#include <projectexplorer/runconfiguration.h>
-#include <projectexplorer/target.h>
-#include <projectexplorer/taskhub.h>
-#include <projectexplorer/toolchain.h>
-
-#include <extensionsystem/iplugin.h>
-#include <extensionsystem/pluginmanager.h>
 
 #include <coreplugin/actionmanager/actioncontainer.h>
 #include <coreplugin/actionmanager/actionmanager.h>
@@ -46,8 +24,26 @@
 #include <coreplugin/icore.h>
 #include <coreplugin/modemanager.h>
 
+#include <debugger/debuggerkitaspect.h>
+#include <debugger/debuggerruncontrol.h>
+#include <debugger/analyzer/analyzerconstants.h>
+#include <debugger/analyzer/analyzermanager.h>
+#include <debugger/analyzer/startremotedialog.h>
+
+#include <projectexplorer/buildconfiguration.h>
+#include <projectexplorer/deploymentdata.h>
+#include <projectexplorer/devicesupport/devicemanager.h>
+#include <projectexplorer/kitaspects.h>
+#include <projectexplorer/project.h>
+#include <projectexplorer/projectexplorer.h>
+#include <projectexplorer/projectexplorerconstants.h>
+#include <projectexplorer/projectmanager.h>
+#include <projectexplorer/runconfiguration.h>
+#include <projectexplorer/target.h>
+#include <projectexplorer/taskhub.h>
+#include <projectexplorer/toolchain.h>
+
 #include <utils/checkablemessagebox.h>
-#include <utils/fancymainwindow.h>
 #include <utils/pathchooser.h>
 #include <utils/process.h>
 #include <utils/qtcassert.h>
@@ -55,22 +51,20 @@
 #include <utils/utilsicons.h>
 
 #include <QAction>
+#include <QCheckBox>
+#include <QComboBox>
 #include <QFile>
-#include <QFileDialog>
 #include <QFileInfo>
 #include <QHostAddress>
 #include <QInputDialog>
 #include <QLabel>
-#include <QMenu>
-#include <QToolButton>
-#include <QSortFilterProxyModel>
-
-#include <QCheckBox>
-#include <QComboBox>
 #include <QLineEdit>
+#include <QMenu>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QStandardPaths>
+#include <QToolButton>
+#include <QSortFilterProxyModel>
 #include <QVBoxLayout>
 
 #ifdef Q_OS_WIN
@@ -107,7 +101,6 @@ public:
 signals:
     void internalParserError(const QString &errorString);
     void parserError(const Valgrind::XmlProtocol::Error &error);
-    void suppressionCount(const QString &name, qint64 count);
 
 private:
     QString progressTitle() const override;
@@ -176,7 +169,7 @@ void MemcheckToolRunner::start()
 
 void MemcheckToolRunner::stop()
 {
-    disconnect(m_runner.parser(), &ThreadedParser::internalError,
+    disconnect(&m_runner, &ValgrindProcess::internalError,
                this, &MemcheckToolRunner::internalParserError);
     ValgrindToolRunner::stop();
 }
@@ -246,11 +239,11 @@ static ErrorListModel::RelevantFrameFinder makeFrameFinder(const QStringList &pr
 {
     return [projectFiles](const Error &error) {
         const Frame defaultFrame = Frame();
-        const QVector<Stack> stacks = error.stacks();
+        const QList<Stack> stacks = error.stacks();
         if (stacks.isEmpty())
             return defaultFrame;
         const Stack &stack = stacks[0];
-        const QVector<Frame> frames = stack.frames();
+        const QList<Frame> frames = stack.frames();
         if (frames.isEmpty())
             return defaultFrame;
 
@@ -349,7 +342,7 @@ bool MemcheckErrorFilterProxyModel::filterAcceptsRow(int sourceRow, const QModel
             }
         }
 
-        const QVector<Frame> frames = error.stacks().constFirst().frames();
+        const QList<Frame> frames = error.stacks().constFirst().frames();
 
         const int framesToLookAt = qMin(6, frames.size());
 
@@ -439,6 +432,7 @@ private:
     QAction *m_goNext;
     bool m_toolBusy = false;
 
+    std::unique_ptr<Parser> m_logParser;
     QString m_exitMsg;
     Perspective m_perspective{"Memcheck.Perspective", Tr::tr("Memcheck")};
 
@@ -712,7 +706,7 @@ MemcheckToolPrivate::~MemcheckToolPrivate()
 
 void MemcheckToolPrivate::heobAction()
 {
-    Runnable sr;
+    ProcessRunData sr;
     Abi abi;
     bool hasLocalRc = false;
     Kit *kit = nullptr;
@@ -1035,9 +1029,8 @@ void MemcheckToolPrivate::loadExternalXmlLogFile()
 
 void MemcheckToolPrivate::loadXmlLogFile(const QString &filePath)
 {
-    auto logFile = new QFile(filePath);
-    if (!logFile->open(QIODevice::ReadOnly | QIODevice::Text)) {
-        delete logFile;
+    QFile logFile(filePath);
+    if (!logFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
         QString msg = Tr::tr("Memcheck: Failed to open file for reading: %1").arg(filePath);
         TaskHub::addTask(Task::Error, msg, Debugger::Constants::ANALYZERTASK_ID);
         TaskHub::requestPopup();
@@ -1056,17 +1049,17 @@ void MemcheckToolPrivate::loadXmlLogFile(const QString &filePath)
         updateFromSettings();
     }
 
-    auto parser = new ThreadedParser;
-    connect(parser, &ThreadedParser::error,
-            this, &MemcheckToolPrivate::parserError);
-    connect(parser, &ThreadedParser::internalError,
-            this, &MemcheckToolPrivate::internalParserError);
-    connect(parser, &ThreadedParser::finished,
-            this, &MemcheckToolPrivate::loadingExternalXmlLogFileFinished);
-    connect(parser, &ThreadedParser::finished,
-            parser, &ThreadedParser::deleteLater);
+    m_logParser.reset(new Parser);
+    connect(m_logParser.get(), &Parser::error, this, &MemcheckToolPrivate::parserError);
+    connect(m_logParser.get(), &Parser::done, this, [this](bool success, const QString &err) {
+        if (!success)
+            internalParserError(err);
+        loadingExternalXmlLogFileFinished();
+        m_logParser.release()->deleteLater();
+    });
 
-    parser->parse(logFile); // ThreadedParser owns the file
+    m_logParser->setData(logFile.readAll());
+    m_logParser->start();
 }
 
 void MemcheckToolPrivate::parserError(const Error &error)
@@ -1155,19 +1148,15 @@ MemcheckToolRunner::MemcheckToolRunner(RunControl *runControl)
       m_localServerAddress(QHostAddress::LocalHost)
 {
     setId("MemcheckToolRunner");
-    connect(m_runner.parser(), &XmlProtocol::ThreadedParser::error,
-            this, &MemcheckToolRunner::parserError);
-    connect(m_runner.parser(), &XmlProtocol::ThreadedParser::suppressionCount,
-            this, &MemcheckToolRunner::suppressionCount);
+    connect(&m_runner, &ValgrindProcess::error, this, &MemcheckToolRunner::parserError);
 
     if (m_withGdb) {
-        connect(&m_runner, &ValgrindRunner::valgrindStarted,
+        connect(&m_runner, &ValgrindProcess::valgrindStarted,
                 this, &MemcheckToolRunner::startDebugger);
-        connect(&m_runner, &ValgrindRunner::logMessageReceived,
+        connect(&m_runner, &ValgrindProcess::logMessageReceived,
                 this, &MemcheckToolRunner::appendLog);
-//        m_runner.disableXml();
     } else {
-        connect(m_runner.parser(), &XmlProtocol::ThreadedParser::internalError,
+        connect(&m_runner, &ValgrindProcess::internalError,
                 this, &MemcheckToolRunner::internalParserError);
     }
 
@@ -1180,7 +1169,6 @@ MemcheckToolRunner::MemcheckToolRunner(RunControl *runControl)
 
     dd->setupRunner(this);
 }
-
 
 const char heobProfileC[] = "Heob/Profile";
 const char heobProfileNameC[] = "Name";

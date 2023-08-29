@@ -452,12 +452,12 @@ SourcePathMapAspect::~SourcePathMapAspect()
     delete d;
 }
 
-void SourcePathMapAspect::fromMap(const QVariantMap &)
+void SourcePathMapAspect::fromMap(const Store &)
 {
     QTC_CHECK(false); // This is only used via read/writeSettings
 }
 
-void SourcePathMapAspect::toMap(QVariantMap &) const
+void SourcePathMapAspect::toMap(Store &) const
 {
     QTC_CHECK(false);
 }
@@ -491,7 +491,7 @@ const char sourcePathMappingTargetKeyC[] = "Target";
 void SourcePathMapAspect::writeSettings() const
 {
     const SourcePathMap sourcePathMap = value();
-    QSettings *s = settings();
+    QSettings *s = qtcSettings();
     s->beginWriteArray(sourcePathMappingArrayNameC);
     if (!sourcePathMap.isEmpty()) {
         const QString sourcePathMappingSourceKey(sourcePathMappingSourceKeyC);
@@ -510,7 +510,7 @@ void SourcePathMapAspect::writeSettings() const
 
 void SourcePathMapAspect::readSettings()
 {
-    QSettings *s = settings();
+    QSettings *s = qtcSettings();
     SourcePathMap sourcePathMap;
     if (const int count = s->beginReadArray(sourcePathMappingArrayNameC)) {
         const QString sourcePathMappingSourceKey(sourcePathMappingSourceKeyC);

@@ -1735,6 +1735,10 @@ void TextEditorWidgetPrivate::insertSuggestion(std::unique_ptr<TextSuggestion> &
 
     auto cursor = q->textCursor();
     cursor.setPosition(suggestion->position());
+    QTextOption option = suggestion->document()->defaultTextOption();
+    option.setTabStopDistance(charWidth() * m_document->tabSettings().m_tabSize);
+    suggestion->document()->setDefaultTextOption(option);
+    auto options = suggestion->document()->defaultTextOption();
     m_suggestionBlock = cursor.block();
     m_document->insertSuggestion(std::move(suggestion));
 }
@@ -7881,38 +7885,48 @@ void TextEditorWidget::setExtraEncodingSettings(const ExtraEncodingSettings &ext
     d->m_document->setExtraEncodingSettings(extraEncodingSettings);
 }
 
-void TextEditorWidget::fold()
+void TextEditorWidget::foldCurrentBlock()
+{
+    fold(textCursor().block());
+}
+
+void TextEditorWidget::fold(const QTextBlock &block)
 {
     QTextDocument *doc = document();
     auto documentLayout = qobject_cast<TextDocumentLayout*>(doc->documentLayout());
     QTC_ASSERT(documentLayout, return);
-    QTextBlock block = textCursor().block();
-    if (!(TextDocumentLayout::canFold(block) && block.next().isVisible())) {
+    QTextBlock b = block;
+    if (!(TextDocumentLayout::canFold(b) && b.next().isVisible())) {
         // find the closest previous block which can fold
-        int indent = TextDocumentLayout::foldingIndent(block);
-        while (block.isValid() && (TextDocumentLayout::foldingIndent(block) >= indent || !block.isVisible()))
-            block = block.previous();
+        int indent = TextDocumentLayout::foldingIndent(b);
+        while (b.isValid() && (TextDocumentLayout::foldingIndent(b) >= indent || !b.isVisible()))
+            b = b.previous();
     }
-    if (block.isValid()) {
-        TextDocumentLayout::doFoldOrUnfold(block, false);
+    if (b.isValid()) {
+        TextDocumentLayout::doFoldOrUnfold(b, false);
         d->moveCursorVisible();
         documentLayout->requestUpdate();
         documentLayout->emitDocumentSizeChanged();
     }
 }
 
-void TextEditorWidget::unfold()
+void TextEditorWidget::unfold(const QTextBlock &block)
 {
     QTextDocument *doc = document();
     auto documentLayout = qobject_cast<TextDocumentLayout*>(doc->documentLayout());
     QTC_ASSERT(documentLayout, return);
-    QTextBlock block = textCursor().block();
-    while (block.isValid() && !block.isVisible())
-        block = block.previous();
-    TextDocumentLayout::doFoldOrUnfold(block, true);
+    QTextBlock b = block;
+    while (b.isValid() && !b.isVisible())
+        b = b.previous();
+    TextDocumentLayout::doFoldOrUnfold(b, true);
     d->moveCursorVisible();
     documentLayout->requestUpdate();
     documentLayout->emitDocumentSizeChanged();
+}
+
+void TextEditorWidget::unfoldCurrentBlock()
+{
+    unfold(textCursor().block());
 }
 
 void TextEditorWidget::unfoldAll()
@@ -8351,6 +8365,11 @@ void TextEditorWidget::appendStandardContextMenuActions(QMenu *menu)
         if (!menu->actions().contains(findUsage))
             menu->addAction(findUsage);
     }
+    if (optionalActions() & TextEditorActionHandler::RenameSymbol) {
+        const auto renameSymbol = ActionManager::command(Constants::RENAME_SYMBOL)->action();
+        if (!menu->actions().contains(renameSymbol))
+            menu->addAction(renameSymbol);
+    }
     if (optionalActions() & TextEditorActionHandler::CallHierarchy) {
         const auto callHierarchy = ActionManager::command(Constants::OPEN_CALL_HIERARCHY)->action();
         if (!menu->actions().contains(callHierarchy))
@@ -8721,6 +8740,11 @@ void TextEditorWidgetPrivate::updateTabStops()
     QTextOption option = q->document()->defaultTextOption();
     option.setTabStopDistance(charWidth() * m_document->tabSettings().m_tabSize);
     q->document()->setDefaultTextOption(option);
+    if (TextSuggestion *suggestion = TextDocumentLayout::suggestion(m_suggestionBlock)) {
+        QTextOption option = suggestion->document()->defaultTextOption();
+        option.setTabStopDistance(option.tabStopDistance());
+        suggestion->document()->setDefaultTextOption(option);
+    }
 }
 
 void TextEditorWidgetPrivate::applyTabSettings()

@@ -12,14 +12,14 @@
 #include <cppeditor/cppeditorconstants.h>
 #include <cppeditor/cpptoolsreuse.h>
 
-#include <projectexplorer/kitinformation.h>
+#include <projectexplorer/kitaspects.h>
 #include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/projecttree.h>
 #include <projectexplorer/targetsetuppage.h>
 #include <projectexplorer/task.h>
 
-#include <qtsupport/qtkitinformation.h>
+#include <qtsupport/qtkitaspect.h>
 #include <qtsupport/qtsupportconstants.h>
 
 #include <utils/algorithm.h>

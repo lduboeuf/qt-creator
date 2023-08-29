@@ -6,7 +6,7 @@
 #include "makefileparse.h"
 #include "qmakebuildconfiguration.h"
 #include "qmakebuildinfo.h"
-#include "qmakekitinformation.h"
+#include "qmakekitaspect.h"
 #include "qmakeproject.h"
 #include "qmakeprojectmanagertr.h"
 #include "qmakestep.h"
@@ -17,7 +17,7 @@
 #include <projectexplorer/toolchain.h>
 #include <projectexplorer/toolchainmanager.h>
 
-#include <qtsupport/qtkitinformation.h>
+#include <qtsupport/qtkitaspect.h>
 #include <qtsupport/qtsupportconstants.h>
 #include <qtsupport/qtversionfactory.h>
 #include <qtsupport/qtversionmanager.h>

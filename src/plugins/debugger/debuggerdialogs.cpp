@@ -10,7 +10,7 @@
 #include <coreplugin/icore.h>
 
 #include <projectexplorer/devicesupport/sshparameters.h>
-#include <projectexplorer/kitinformation.h>
+#include <projectexplorer/kitaspects.h>
 #include <projectexplorer/kitmanager.h>
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/toolchain.h>
@@ -95,7 +95,7 @@ public:
     Id kitId;
     uint serverPort;
     QString serverAddress;
-    Runnable runnable;
+    ProcessRunData runnable;
     bool breakAtMain = false;
     bool runInTerminal = false;
     bool useTargetExtendedRemote = false;
@@ -290,8 +290,11 @@ StartApplicationDialog::StartApplicationDialog(QWidget *parent)
     verticalLayout->addWidget(Layouting::createHr());
     verticalLayout->addWidget(d->buttonBox);
 
-    connect(d->localExecutablePathChooser, &PathChooser::rawPathChanged,
-            this, &StartApplicationDialog::updateState);
+    connect(d->localExecutablePathChooser,
+            &PathChooser::validChanged,
+            this,
+            &StartApplicationDialog::updateState);
+
     connect(d->buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(d->buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
     connect(d->historyComboBox, &QComboBox::currentIndexChanged,
@@ -399,7 +402,7 @@ void StartApplicationDialog::run(bool attachRemote)
     }
 
     IDevice::ConstPtr dev = DeviceKitAspect::device(k);
-    Runnable inferior = newParameters.runnable;
+    ProcessRunData inferior = newParameters.runnable;
     const QString inputAddress = dialog.d->channelOverrideEdit->text();
     if (!inputAddress.isEmpty())
         debugger->setRemoteChannel(inputAddress);

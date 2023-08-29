@@ -27,8 +27,8 @@ public:
     explicit IosDeviceTypeAspect(Utils::AspectContainer *container,
                                  IosRunConfiguration *runConfiguration);
 
-    void fromMap(const QVariantMap &map) override;
-    void toMap(QVariantMap &map) const override;
+    void fromMap(const Utils::Store &map) override;
+    void toMap(Utils::Store &map) const override;
     void addToLayout(Layouting::LayoutItem &parent) override;
 
     IosDeviceType deviceType() const;

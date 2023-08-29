@@ -10,7 +10,7 @@
 
 #include <projectexplorer/buildconfiguration.h>
 #include <projectexplorer/ioutputparser.h>
-#include <projectexplorer/kitinformation.h>
+#include <projectexplorer/kitaspects.h>
 #include <projectexplorer/processparameters.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/projectexplorerconstants.h>
@@ -121,7 +121,7 @@ QWidget *NimCompilerBuildStep::createConfigWidget()
     return widget;
 }
 
-void NimCompilerBuildStep::fromMap(const QVariantMap &map)
+void NimCompilerBuildStep::fromMap(const Store &map)
 {
     AbstractProcessStep::fromMap(map);
     m_userCompilerOptions = map[Constants::C_NIMCOMPILERBUILDSTEP_USERCOMPILEROPTIONS].toString().split('|');
@@ -129,7 +129,7 @@ void NimCompilerBuildStep::fromMap(const QVariantMap &map)
     m_targetNimFile = FilePath::fromString(map[Constants::C_NIMCOMPILERBUILDSTEP_TARGETNIMFILE].toString());
 }
 
-void NimCompilerBuildStep::toMap(QVariantMap &map) const
+void NimCompilerBuildStep::toMap(Store &map) const
 {
     AbstractProcessStep::toMap(map);
     map[Constants::C_NIMCOMPILERBUILDSTEP_USERCOMPILEROPTIONS] = m_userCompilerOptions.join('|');

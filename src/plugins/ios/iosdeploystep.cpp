@@ -14,8 +14,8 @@
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/target.h>
 #include <projectexplorer/taskhub.h>
+#include <projectexplorer/kitaspects.h>
 #include <projectexplorer/kitmanager.h>
-#include <projectexplorer/kitinformation.h>
 #include <projectexplorer/devicesupport/devicemanager.h>
 
 #include <solutions/tasking/tasktree.h>
@@ -97,11 +97,7 @@ private:
     void start() final { task()->start(); }
 };
 
-} // Ios::Internal
-
-TASKING_DECLARE_TASK(IosTransferTask, Ios::Internal::IosTransferTaskAdapter);
-
-namespace Ios::Internal {
+using IosTransferTask = CustomTask<IosTransferTaskAdapter>;
 
 class IosDeployStep final : public BuildStep
 {

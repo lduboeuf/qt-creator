@@ -7,7 +7,7 @@
 #include "iosconstants.h"
 #include "iostr.h"
 
-#include <projectexplorer/kitinformation.h>
+#include <projectexplorer/kitaspects.h>
 #include <projectexplorer/namedwidget.h>
 #include <projectexplorer/target.h>
 
@@ -376,7 +376,7 @@ public:
 
 private:
     QList<NamedWidget *> createSubConfigWidgets() override;
-    void fromMap(const QVariantMap &map) override;
+    void fromMap(const Store &map) override;
 
     void updateQmakeCommand();
 
@@ -414,7 +414,7 @@ QList<NamedWidget *> IosQmakeBuildConfiguration::createSubConfigWidgets()
     return subConfigWidgets;
 }
 
-void IosQmakeBuildConfiguration::fromMap(const QVariantMap &map)
+void IosQmakeBuildConfiguration::fromMap(const Store &map)
 {
     QmakeBuildConfiguration::fromMap(map);
     if (!hasError())

@@ -3,13 +3,15 @@
 
 #pragma once
 
-#ifndef FAKEVIM_STANDALONE
+#ifdef FAKEVIM_STANDALONE
 
-#include <coreplugin/dialogs/ioptionspage.h>
+#include <utils/store.h>
+
+namespace Utils { class FilePath {}; }
 
 #else
 
-namespace Utils { class FilePath {}; }
+#include <coreplugin/dialogs/ioptionspage.h>
 
 #endif
 
@@ -22,6 +24,13 @@ namespace Utils { class FilePath {}; }
 namespace FakeVim::Internal {
 
 #ifdef FAKEVIM_STANDALONE
+
+#ifdef QTC_USE_STORE
+using Key = QByteArray;
+#else
+using Key = QString;
+#endif
+
 class FvBaseAspect
 {
 public:
@@ -32,16 +41,15 @@ public:
     virtual void setDefaultVariantValue(const QVariant &) {}
     virtual QVariant variantValue() const { return {}; }
     virtual QVariant defaultVariantValue() const { return {}; }
-
-    void setSettingsKey(const QString &group, const QString &key);
-    QString settingsKey() const;
+    void setSettingsKey(const Key &group, const Key &key);
+    Key settingsKey() const;
     void setCheckable(bool) {}
     void setDisplayName(const QString &) {}
     void setToolTip(const QString &) {}
 
 private:
-    QString m_settingsGroup;
-    QString m_settingsKey;
+    Key m_settingsGroup;
+    Key m_settingsKey;
 };
 
 template <class ValueType>
@@ -99,7 +107,7 @@ public:
     FakeVimSettings();
     ~FakeVimSettings();
 
-    FvBaseAspect *item(const QString &name);
+    FvBaseAspect *item(const Utils::Key &name);
     QString trySetValue(const QString &name, const QString &value);
 
     FvBoolAspect useFakeVim;
@@ -155,12 +163,12 @@ public:
 
 private:
     void setup(FvBaseAspect *aspect, const QVariant &value,
-                      const QString &settingsKey,
-                      const QString &shortName,
-                      const QString &label);
+               const Utils::Key &settingsKey,
+               const Utils::Key &shortName,
+               const QString &label);
 
-    QHash<QString, FvBaseAspect *> m_nameToAspect;
-    QHash<FvBaseAspect *, QString> m_aspectToName;
+    QHash<Utils::Key, FvBaseAspect *> m_nameToAspect;
+    QHash<FvBaseAspect *, Utils::Key> m_aspectToName;
 };
 
 FakeVimSettings &settings();

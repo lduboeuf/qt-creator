@@ -62,7 +62,7 @@ QmlMultiLanguageAspect::QmlMultiLanguageAspect(AspectContainer *container)
     setToolTip(Tr::tr("Reads translations from MultiLanguage plugin."));
 
     setDefaultValue(!databaseFilePath().isEmpty());
-    QVariantMap getDefaultValues;
+    Store getDefaultValues;
     fromMap(getDefaultValues);
 
     addDataExtractor(this, &QmlMultiLanguageAspect::origin, &Data::origin);
@@ -105,14 +105,14 @@ Utils::FilePath QmlMultiLanguageAspect::databaseFilePath() const
     return m_databaseFilePath;
 }
 
-void QmlMultiLanguageAspect::toMap(QVariantMap &map) const
+void QmlMultiLanguageAspect::toMap(Store &map) const
 {
     BoolAspect::toMap(map);
     if (!m_currentLocale.isEmpty())
         map.insert(Constants::LAST_USED_LANGUAGE, m_currentLocale);
 }
 
-void QmlMultiLanguageAspect::fromMap(const QVariantMap &map)
+void QmlMultiLanguageAspect::fromMap(const Store &map)
 {
     BoolAspect::fromMap(map);
     setCurrentLocale(map.value(Constants::LAST_USED_LANGUAGE, "en").toString());

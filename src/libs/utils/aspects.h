@@ -8,6 +8,7 @@
 #include "infolabel.h"
 #include "macroexpander.h"
 #include "pathchooser.h"
+#include "store.h"
 
 #include <functional>
 #include <memory>
@@ -53,16 +54,19 @@ public:
     Id id() const;
     void setId(Id id);
 
+    enum Announcement { DoEmit, BeQuiet };
+
+    virtual QVariant volatileVariantValue() const;
     virtual QVariant variantValue() const;
-    virtual void setVariantValue(const QVariant &value);
-    virtual void setVariantValueQuietly(const QVariant &value);
+    virtual void setVariantValue(const QVariant &value, Announcement = DoEmit);
 
     virtual QVariant defaultVariantValue() const;
     virtual void setDefaultVariantValue(const QVariant &value);
+    virtual bool isDefaultValue() const;
 
-    QString settingsKey() const;
-    void setSettingsKey(const QString &settingsKey);
-    void setSettingsKey(const QString &group, const QString &key);
+    Key settingsKey() const;
+    void setSettingsKey(const Key &settingsKey);
+    void setSettingsKey(const Key &group, const Key &key);
 
     QString displayName() const;
     void setDisplayName(const QString &displayName);
@@ -98,9 +102,10 @@ public:
 
     AspectContainer *container() const;
 
-    virtual void fromMap(const QVariantMap &map);
-    virtual void toMap(QVariantMap &map) const;
-    virtual void toActiveMap(QVariantMap &map) const { toMap(map); }
+    virtual void fromMap(const Store &map);
+    virtual void toMap(Store &map) const;
+    virtual void toActiveMap(Store &map) const { toMap(map); }
+    virtual void volatileToMap(Store &map) const;
 
     virtual void addToLayout(Layouting::LayoutItem &parent);
 
@@ -114,11 +119,23 @@ public:
     QVariant fromSettingsValue(const QVariant &val) const;
 
     virtual void apply();
-    virtual void silentApply();
     virtual void cancel();
     virtual void finish();
     virtual bool isDirty();
     bool hasAction() const;
+
+    struct QTCREATOR_UTILS_EXPORT Changes
+    {
+        Changes();
+
+        unsigned internalFromOutside : 1;
+        unsigned internalFromBuffer : 1;
+        unsigned bufferFromOutside : 1;
+        unsigned bufferFromInternal : 1;
+        unsigned bufferFromGui : 1;
+    };
+
+    void announceChanges(Changes changes, Announcement howToAnnounce = DoEmit);
 
     class QTCREATOR_UTILS_EXPORT Data
     {
@@ -163,8 +180,8 @@ public:
 
     Data::Ptr extractData() const;
 
-    static void setSettings(QSettings *settings);
-    static QSettings *settings();
+    static void setQtcSettings(QSettings *settings);
+    static QSettings *qtcSettings();
 
     // This is expensive. Do not use without good reason
     void writeToSettingsImmediatly() const;
@@ -172,17 +189,15 @@ public:
 signals:
     void changed(); // "internal"
     void volatileValueChanged();
-    void externalValueChanged();
     void labelLinkActivated(const QString &link);
     void checkedChanged();
+    void enabledChanged();
 
 protected:
     virtual bool internalToBuffer();
     virtual bool bufferToInternal();
     virtual void bufferToGui();
     virtual bool guiToBuffer();
-    virtual bool internalToExternal();
-    virtual bool externalToInternal();
 
     virtual void handleGuiChanged();
 
@@ -217,8 +232,8 @@ protected:
     }
 
     void registerSubWidget(QWidget *widget);
-    static void saveToMap(QVariantMap &data, const QVariant &value,
-                          const QVariant &defaultValue, const QString &key);
+    static void saveToMap(Store &data, const QVariant &value,
+                          const QVariant &defaultValue, const Key &key);
 
 protected:
     template <class Value>
@@ -253,48 +268,46 @@ public:
         ValueType value;
     };
 
-    ValueType operator()() const { return m_external; }
-    ValueType value() const { return m_external; }
+    ValueType operator()() const { return m_internal; }
+    ValueType value() const { return m_internal; }
     ValueType defaultValue() const { return m_default; }
+    ValueType volatileValue() const { return m_buffer; }
 
+    // We assume that this is only used in the ctor and no signalling is needed.
+    // If it is used elsewhere changes have to be detected and signalled externally.
     void setDefaultValue(const ValueType &value)
     {
         m_default = value;
-        setValue(value);
-    }
-
-    void setValue(const ValueType &value)
-    {
-        const bool changes = m_internal != value;
         m_internal = value;
-        if (internalToBuffer())
-            emit volatileValueChanged();
-        bufferToGui();
-        internalToExternal();
-        if (changes)
-            emit changed();
+        internalToBuffer(); // Might be more than a plain copy.
     }
 
-    void setValueQuietly(const ValueType &value)
+    bool isDefaultValue() const override
     {
-        m_internal = value;
-        internalToBuffer();
-        bufferToGui();
-        internalToExternal();
+        return m_default == m_internal;
     }
 
-    ValueType volatileValue() const
+    void setValue(const ValueType &value, Announcement howToAnnounce = DoEmit)
     {
-        return m_buffer;
+        Changes changes;
+        changes.internalFromOutside = updateStorage(m_internal, value);
+        if (internalToBuffer()) {
+            changes.bufferFromInternal = true;
+            bufferToGui();
+        }
+        announceChanges(changes, howToAnnounce);
     }
 
-    void setVolatileValue(const ValueType &value)
+    void setVolatileValue(const ValueType &value, Announcement howToAnnounce = DoEmit)
     {
-        if (m_buffer == value)
-            return;
-        m_buffer = value;
-        bufferToGui();
-        emit volatileValueChanged();
+        Changes changes;
+        if (updateStorage(m_buffer, value)) {
+            changes.bufferFromOutside = true;
+            bufferToGui();
+        }
+        if (isAutoApply() && bufferToInternal())
+            changes.internalFromBuffer = true;
+        announceChanges(changes, howToAnnounce);
     }
 
 protected:
@@ -313,29 +326,19 @@ protected:
         return updateStorage(m_internal, m_buffer);
     }
 
-    bool internalToExternal() override
-    {
-        return updateStorage(m_external, m_internal);
-    }
-
-    bool externalToInternal() override
-    {
-        return updateStorage(m_internal, m_external);
-    }
-
     QVariant variantValue() const override
     {
-        return QVariant::fromValue<ValueType>(m_external);
+        return QVariant::fromValue<ValueType>(m_internal);
     }
 
-    void setVariantValue(const QVariant &value) override
+    QVariant volatileVariantValue() const override
     {
-        setValue(value.value<ValueType>());
+        return QVariant::fromValue<ValueType>(m_buffer);
     }
 
-    void setVariantValueQuietly(const QVariant &value) override
+    void setVariantValue(const QVariant &value, Announcement howToAnnounce = DoEmit) override
     {
-        setValueQuietly(value.value<ValueType>());
+        setValue(value.value<ValueType>(), howToAnnounce);
     }
 
     QVariant defaultVariantValue() const override
@@ -345,11 +348,10 @@ protected:
 
     void setDefaultVariantValue(const QVariant &value) override
     {
-        m_default = value.value<ValueType>();
+        setDefaultValue(value.value<ValueType>());
     }
 
     ValueType m_default{};
-    ValueType m_external{};
     ValueType m_internal{};
     ValueType m_buffer{};
 };
@@ -366,7 +368,6 @@ public:
     void setInternalToBuffer(const Updater &updater) { m_internalToBuffer = updater; }
     void setBufferToInternal(const Updater &updater) { m_bufferToInternal = updater; }
     void setInternalToExternal(const Updater &updater) { m_internalToExternal = updater; }
-    void setExternalToInternal(const Updater &updater) { m_externalToInternal = updater; }
 
 protected:
     bool internalToBuffer() override
@@ -383,24 +384,18 @@ protected:
         return Base::bufferToInternal();
     }
 
-    bool internalToExternal() override
+    ValueType expandedValue()
     {
-        if (m_internalToExternal)
-            return m_internalToExternal(Base::m_external, Base::m_internal);
-        return Base::internalToExternal();
-    }
-
-    bool externalToInternal() override
-    {
-        if (m_externalToInternal)
-            return m_externalToInternal(Base::m_internal, Base::m_external);
-        return Base::externalToInternal();
+        if (!m_internalToExternal)
+            return Base::m_internal;
+        ValueType val;
+        m_internalToExternal(val, Base::m_internal);
+        return val;
     }
 
     Updater m_internalToBuffer;
     Updater m_bufferToInternal;
     Updater m_internalToExternal;
-    Updater m_externalToInternal;
 };
 
 class QTCREATOR_UTILS_EXPORT BoolAspect : public TypedAspect<bool>
@@ -419,7 +414,7 @@ public:
 
     QAction *action() override;
 
-    enum class LabelPlacement { AtCheckBox, AtCheckBoxWithoutDummyLabel, InExtraLabel };
+    enum class LabelPlacement { AtCheckBox, Compact, InExtraLabel };
     void setLabel(const QString &labelText,
                   LabelPlacement labelPlacement = LabelPlacement::InExtraLabel);
     void setLabelPlacement(LabelPlacement labelPlacement);
@@ -536,6 +531,9 @@ public:
 
     void addToLayout(Layouting::LayoutItem &parent) override;
 
+    QString operator()() const { return expandedValue(); }
+    QString expandedValue() const;
+
     // Hook between UI and StringAspect:
     using ValueAcceptor = std::function<std::optional<QString>(const QString &, const QString &)>;
     void setValueAcceptor(ValueAcceptor &&acceptor);
@@ -543,7 +541,7 @@ public:
     void setShowToolTipOnLabel(bool show);
     void setDisplayFilter(const std::function<QString (const QString &)> &displayFilter);
     void setPlaceHolderText(const QString &placeHolderText);
-    void setHistoryCompleter(const QString &historyCompleterKey);
+    void setHistoryCompleter(const Key &historyCompleterKey);
     void setUndoRedoEnabled(bool readOnly);
     void setAcceptRichText(bool acceptRichText);
     void setMacroExpanderProvider(const MacroExpanderProvider &expanderProvider);
@@ -553,7 +551,7 @@ public:
     void setAutoApplyOnEditingFinished(bool applyOnEditingFinished);
     void setElideMode(Qt::TextElideMode elideMode);
 
-    void makeCheckable(CheckBoxPlacement checkBoxPlacement, const QString &optionalLabel, const QString &optionalBaseKey);
+    void makeCheckable(CheckBoxPlacement checkBoxPlacement, const QString &optionalLabel, const Key &optionalBaseKey);
     bool isChecked() const;
     void setChecked(bool checked);
 
@@ -562,12 +560,14 @@ public:
     enum DisplayStyle {
         LabelDisplay,
         LineEditDisplay,
-        TextEditDisplay
+        TextEditDisplay,
+        PasswordLineEditDisplay,
     };
     void setDisplayStyle(DisplayStyle style);
 
-    void fromMap(const QVariantMap &map) override;
-    void toMap(QVariantMap &map) const override;
+    void fromMap(const Utils::Store &map) override;
+    void toMap(Utils::Store &map) const override;
+    void volatileToMap(Utils::Store &map) const override;
 
 signals:
     void validChanged(bool validState);
@@ -599,8 +599,9 @@ public:
     FilePath operator()() const;
     FilePath expandedValue() const;
     QString value() const;
-    void setValue(const FilePath &filePath);
-    void setDefaultValue(const FilePath &filePath);
+    void setValue(const FilePath &filePath, Announcement howToAnnounce = DoEmit);
+    void setValue(const QString &filePath, Announcement howToAnnounce = DoEmit);
+    void setDefaultValue(const QString &filePath);
 
     void setPromptDialogFilter(const QString &filter);
     void setPromptDialogTitle(const QString &title);
@@ -615,14 +616,14 @@ public:
     void setPlaceHolderText(const QString &placeHolderText);
     void setValidationFunction(const FancyLineEdit::ValidationFunction &validator);
     void setDisplayFilter(const std::function<QString (const QString &)> &displayFilter);
-    void setHistoryCompleter(const QString &historyCompleterKey);
+    void setHistoryCompleter(const Key &historyCompleterKey);
     void setMacroExpanderProvider(const MacroExpanderProvider &expanderProvider);
     void setShowToolTipOnLabel(bool show);
     void setAutoApplyOnEditingFinished(bool applyOnEditingFinished);
 
     void validateInput();
 
-    void makeCheckable(CheckBoxPlacement checkBoxPlacement, const QString &optionalLabel, const QString &optionalBaseKey);
+    void makeCheckable(CheckBoxPlacement checkBoxPlacement, const QString &optionalLabel, const Key &optionalBaseKey);
     bool isChecked() const;
     void setChecked(bool checked);
 
@@ -634,8 +635,9 @@ public:
 
     void addToLayout(Layouting::LayoutItem &parent) override;
 
-    void fromMap(const QVariantMap &map) override;
-    void toMap(QVariantMap &map) const override;
+    void fromMap(const Utils::Store &map) override;
+    void toMap(Utils::Store &map) const override;
+    void volatileToMap(Utils::Store &map) const override;
 
 signals:
     void validChanged(bool validState);
@@ -825,7 +827,7 @@ private:
     const int m_groupCount;
 };
 
-class QTCREATOR_UTILS_EXPORT AspectContainer : public QObject
+class QTCREATOR_UTILS_EXPORT AspectContainer : public BaseAspect
 {
     Q_OBJECT
 
@@ -839,25 +841,26 @@ public:
     void registerAspect(BaseAspect *aspect, bool takeOwnership = false);
     void registerAspects(const AspectContainer &aspects);
 
-    void fromMap(const QVariantMap &map);
-    void toMap(QVariantMap &map) const;
+    void fromMap(const Utils::Store &map) override;
+    void toMap(Utils::Store &map) const override;
+    void volatileToMap(Utils::Store &map) const override;
 
-    void readSettings();
-    void writeSettings() const;
+    void readSettings() override;
+    void writeSettings() const override;
 
     void setSettingsGroup(const QString &groupKey);
     void setSettingsGroups(const QString &groupKey, const QString &subGroupKey);
     QStringList settingsGroups() const;
 
-    void apply();
-    void cancel();
-    void finish();
+    void apply() override;
+    void cancel() override;
+    void finish() override;
 
     void reset();
     bool equals(const AspectContainer &other) const;
     void copyFrom(const AspectContainer &other);
     void setAutoApply(bool on);
-    bool isDirty() const;
+    bool isDirty() override;
 
     template <typename T> T *aspect() const
     {

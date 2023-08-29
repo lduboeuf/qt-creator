@@ -31,7 +31,7 @@ CTestTool::CTestTool()
     setActive(false);
     setSettingsGroups("Autotest", "CTest");
     setAutoApply(false);
-    setName("CTest");
+    setId("AutoTest.Framework.CTest");
     setDisplayName(Tr::tr("CTest"));
 
     setLayouter([this] {
@@ -58,7 +58,7 @@ CTestTool::CTestTool()
 
     outputOnFail.setSettingsKey("OutputOnFail");
     outputOnFail.setLabelText(Tr::tr("Output on failure"));
-    outputOnFail.setLabelPlacement(BoolAspect::LabelPlacement::AtCheckBoxWithoutDummyLabel);
+    outputOnFail.setLabelPlacement(BoolAspect::LabelPlacement::Compact);
     outputOnFail.setDefaultValue(true);
 
     outputMode.setSettingsKey("OutputMode");
@@ -85,11 +85,11 @@ CTestTool::CTestTool()
 
     scheduleRandom.setSettingsKey("ScheduleRandom");
     scheduleRandom.setLabelText(Tr::tr("Schedule random"));
-    scheduleRandom.setLabelPlacement(BoolAspect::LabelPlacement::AtCheckBoxWithoutDummyLabel);
+    scheduleRandom.setLabelPlacement(BoolAspect::LabelPlacement::Compact);
 
     stopOnFailure.setSettingsKey("StopOnFail");
     stopOnFailure.setLabelText(Tr::tr("Stop on failure"));
-    stopOnFailure.setLabelPlacement(BoolAspect::LabelPlacement::AtCheckBoxWithoutDummyLabel);
+    stopOnFailure.setLabelPlacement(BoolAspect::LabelPlacement::Compact);
 
     parallel.setSettingsKey("Parallel");
     parallel.setToolTip(Tr::tr("Run tests in parallel mode using given number of jobs."));
@@ -171,7 +171,7 @@ class CTestToolSettingsPage final : public Core::IOptionsPage
 public:
     CTestToolSettingsPage()
     {
-        setId(Id(Constants::SETTINGSPAGE_PREFIX).withSuffix(QString("255.CTest")));
+        setId(Id(Constants::SETTINGSPAGE_PREFIX).withSuffix("255.CTest"));
         setCategory(Constants::AUTOTEST_SETTINGS_CATEGORY);
         setDisplayName(Tr::tr("CTest"));
         setSettingsProvider([] { return &theCTestTool(); });

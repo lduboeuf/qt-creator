@@ -9,7 +9,6 @@
 #include <QApplication>
 #include <QDir>
 #include <QFile>
-#include <QImageReader>
 #include <QPixmapCache>
 #include <QUrl>
 
@@ -18,7 +17,7 @@
 #include <coreplugin/helpmanager.h>
 #include <coreplugin/icore.h>
 
-#include <qtsupport/qtkitinformation.h>
+#include <qtsupport/qtkitaspect.h>
 #include <qtsupport/qtversionmanager.h>
 
 #include <utils/algorithm.h>
@@ -244,13 +243,10 @@ static QPixmap fetchPixmapAndUpdatePixmapCache(const QString &url)
         return pixmap;
 
     if (url.startsWith("qthelp://")) {
-        QByteArray fetchedData = Core::HelpManager::fileData(url);
+        const QByteArray fetchedData = Core::HelpManager::fileData(url);
         if (!fetchedData.isEmpty()) {
-            QBuffer imgBuffer(&fetchedData);
-            imgBuffer.open(QIODevice::ReadOnly);
-            QImageReader reader(&imgBuffer, QFileInfo(url).suffix().toLatin1());
-            QImage img = reader.read();
-            img.convertTo(QImage::Format_RGB32);
+            const QImage img = QImage::fromData(fetchedData, QFileInfo(url).suffix().toLatin1())
+                                   .convertToFormat(QImage::Format_RGB32);
             const int dpr = qApp->devicePixelRatio();
             // boundedTo -> don't scale thumbnails up
             const QSize scaledSize =
@@ -346,6 +342,12 @@ Q_GLOBAL_STATIC_WITH_ARGS(QStringList,
 
 void ExamplesViewController::updateExamples()
 {
+    if (!isVisible()) {
+        m_needsUpdateExamples = true;
+        return;
+    }
+    m_needsUpdateExamples = false;
+
     QString examplesInstallPath;
     QString demosInstallPath;
     QVersionNumber qtVersion;
@@ -399,6 +401,20 @@ void ExamplesViewController::updateExamples()
     }
 }
 
+void ExamplesViewController::setVisible(bool visible)
+{
+    if (m_isVisible == visible)
+        return;
+    m_isVisible = visible;
+    if (m_isVisible && m_needsUpdateExamples)
+        updateExamples();
+}
+
+bool ExamplesViewController::isVisible() const
+{
+    return m_isVisible;
+}
+
 void ExampleSetModel::updateQtVersionList()
 {
     QtVersions versions = QtVersionManager::sortVersions(QtVersionManager::versions(
@@ -434,8 +450,8 @@ void ExampleSetModel::updateQtVersionList()
     // Make sure to select something even if the above failed
     if (currentIndex < 0 && rowCount() > 0)
         currentIndex = 0; // simply select first
-    selectExampleSet(currentIndex);
-    emit selectedExampleSetChanged(currentIndex);
+    if (!selectExampleSet(currentIndex))
+        emit selectedExampleSetChanged(currentIndex); // ensure running updateExamples in any case
 }
 
 QtVersion *ExampleSetModel::findHighestQtVersion(const QtVersions &versions) const
@@ -518,7 +534,7 @@ QStringList ExampleSetModel::exampleSources(QString *examplesInstallPath,
     return sources;
 }
 
-void ExampleSetModel::selectExampleSet(int index)
+bool ExampleSetModel::selectExampleSet(int index)
 {
     if (index != m_selectedExampleSetIndex) {
         m_selectedExampleSetIndex = index;
@@ -530,7 +546,9 @@ void ExampleSetModel::selectExampleSet(int index)
             m_selectedQtTypes.clear();
         }
         emit selectedExampleSetChanged(m_selectedExampleSetIndex);
+        return true;
     }
+    return false;
 }
 
 void ExampleSetModel::qtVersionManagerLoaded()

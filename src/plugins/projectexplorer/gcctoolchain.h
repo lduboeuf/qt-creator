@@ -45,8 +45,6 @@ inline const QStringList gccPredefinedMacrosOptions(Utils::Id languageId)
 
 class PROJECTEXPLORER_EXPORT GccToolChain : public ToolChain
 {
-    Q_OBJECT
-
 public:
     GccToolChain(Utils::Id typeId);
 
@@ -68,8 +66,8 @@ public:
     QStringList suggestedMkspecList() const override;
     QList<Utils::OutputLineParser *> createOutputParsers() const override;
 
-    void toMap(QVariantMap &data) const override;
-    void fromMap(const QVariantMap &data) override;
+    void toMap(Utils::Store &data) const override;
+    void fromMap(const Utils::Store &data) override;
 
     std::unique_ptr<ToolChainConfigWidget> createConfigurationWidget() override;
 
@@ -95,6 +93,7 @@ public:
         Abis supportedAbis;
         QString originalTargetTriple;
     };
+    GccToolChain *asGccToolChain() final { return this; }
 
 protected:
     using CacheItem = QPair<QStringList, Macros>;
@@ -208,8 +207,8 @@ public:
 
     std::unique_ptr<ToolChainConfigWidget> createConfigurationWidget() override;
 
-    void toMap(QVariantMap &data) const override;
-    void fromMap(const QVariantMap &data) override;
+    void toMap(Utils::Store &data) const override;
+    void fromMap(const Utils::Store &data) override;
 
     void setPriority(int priority) { m_priority = priority; }
     int priority() const override { return m_priority; }

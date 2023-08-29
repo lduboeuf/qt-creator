@@ -5,10 +5,10 @@
 
 #include "cmakebuildconfiguration.h"
 #include "cmakebuildsystem.h"
-#include "cmakekitinformation.h"
+#include "cmakekitaspect.h"
 #include "cmaketoolmanager.h"
 
-#include <projectexplorer/kitinformation.h>
+#include <projectexplorer/kitaspects.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/target.h>
 #include <projectexplorer/toolchain.h>

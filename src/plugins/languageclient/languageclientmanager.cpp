@@ -165,7 +165,7 @@ void LanguageClientManager::clientFinished(Client *client)
         if (!PluginManager::isShuttingDown()) {
             const QList<TextEditor::TextDocument *> &clientDocs
                 = managerInstance->m_clientForDocument.keys(client);
-            if (client->reset()) {
+            if (client->state() == Client::Initialized && client->reset()) {
                 qCDebug(Log) << "restart unexpectedly finished client: " << client->name() << client;
                 client->log(
                     Tr::tr("Unexpectedly finished. Restarting in %1 seconds.").arg(restartTimeoutS));
@@ -463,7 +463,7 @@ void LanguageClientManager::editorOpened(Core::IEditor *editor)
                     [document = textEditor->textDocument()]
                     (const QTextCursor &cursor, const Utils::LinkHandler &callback, bool resolveTarget) {
                         if (auto client = clientForDocument(document))
-                            client->symbolSupport().findLinkAt(document, cursor, callback, resolveTarget);
+                            client->findLinkAt(document, cursor, callback, resolveTarget);
                     });
             connect(widget, &TextEditorWidget::requestUsages, this,
                     [document = textEditor->textDocument()](const QTextCursor &cursor) {
@@ -590,7 +590,7 @@ void LanguageClientManager::trackClientDeletion(Client *client)
 {
     QTC_ASSERT(!m_scheduledForDeletion.contains(client->id()), return);
     m_scheduledForDeletion.insert(client->id());
-    connect(client, &QObject::destroyed, [this, id = client->id()](){
+    connect(client, &QObject::destroyed, this, [this, id = client->id()] {
         m_scheduledForDeletion.remove(id);
         if (isShutdownFinished())
             emit shutdownFinished();

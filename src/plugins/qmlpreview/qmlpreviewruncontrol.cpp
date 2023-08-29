@@ -14,7 +14,7 @@
 
 #include <qmldebug/qmldebugcommandlinearguments.h>
 #include <qtsupport/baseqtversion.h>
-#include <qtsupport/qtkitinformation.h>
+#include <qtsupport/qtkitaspect.h>
 
 #include <utils/filepath.h>
 #include <utils/port.h>
@@ -27,7 +27,7 @@ using namespace QmlPreview::Internal;
 
 namespace QmlPreview {
 
-static const QString QmlServerUrl = "QmlServerUrl";
+static const Key QmlServerUrl = "QmlServerUrl";
 
 class QmlPreviewRunner : public ProjectExplorer::RunWorker
 {

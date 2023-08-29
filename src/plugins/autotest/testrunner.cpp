@@ -16,7 +16,7 @@
 #include <coreplugin/icore.h>
 #include <coreplugin/progressmanager/taskprogress.h>
 
-#include <debugger/debuggerkitinformation.h>
+#include <debugger/debuggerkitaspect.h>
 #include <debugger/debuggerruncontrol.h>
 
 #include <projectexplorer/buildconfiguration.h>
@@ -446,7 +446,7 @@ void TestRunner::runTestsHelper()
         };
         const Group group {
             finishAllAndDone,
-            Storage(storage),
+            Tasking::Storage(storage),
             onGroupSetup(onSetup),
             ProcessTask(onProcessSetup, onProcessDone, onProcessDone)
         };
@@ -539,7 +539,7 @@ void TestRunner::debugTests()
     runControl->copyDataFromRunConfiguration(config->runConfiguration());
 
     QStringList omitted;
-    Runnable inferior = config->runnable();
+    ProcessRunData inferior = config->runnable();
     inferior.command.setExecutable(commandFilePath);
 
     const QStringList args = config->argumentsForTestRunner(&omitted);

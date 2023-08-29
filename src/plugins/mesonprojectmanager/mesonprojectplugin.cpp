@@ -8,9 +8,7 @@
 #include "mesonbuildsystem.h"
 #include "mesonproject.h"
 #include "mesonrunconfiguration.h"
-#include "mesontoolkitaspect.h"
 #include "ninjabuildstep.h"
-#include "ninjatoolkitaspect.h"
 #include "toolssettingsaccessor.h"
 #include "toolssettingspage.h"
 
@@ -46,8 +44,6 @@ public:
 private:
     ToolsSettingsPage m_toolslSettingsPage;
     ToolsSettingsAccessor m_toolsSettings;
-    MesonToolKitAspect m_mesonKitAspect;
-    NinjaToolKitAspect m_ninjaKitAspect;
     MesonBuildStepFactory m_buildStepFactory;
     MesonBuildConfigurationFactory m_buildConfigurationFactory;
     MesonRunConfigurationFactory m_runConfigurationFactory;

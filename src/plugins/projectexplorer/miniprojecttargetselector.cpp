@@ -49,8 +49,7 @@
 
 using namespace Utils;
 
-namespace ProjectExplorer {
-namespace Internal {
+namespace ProjectExplorer::Internal {
 
 const int RunColumnWidth = 30;
 
@@ -565,9 +564,9 @@ int SelectorView::padding()
 /////////
 // KitAreaWidget
 /////////
-void doLayout(KitAspectWidget *widget, Layouting::LayoutItem &builder)
+void doLayout(KitAspect *aspect, Layouting::LayoutItem &builder)
 {
-    widget->addToLayout(builder);
+    aspect->addToLayout(builder);
 }
 
 class KitAreaWidget : public QWidget
@@ -584,8 +583,10 @@ public:
 
     void setKit(Kit *k)
     {
-        qDeleteAll(m_widgets);
-        m_widgets.clear();
+        qDeleteAll(m_labels);
+        m_labels.clear();
+        qDeleteAll(m_kitAspects);
+        m_kitAspects.clear();
 
         if (!k)
             return;
@@ -593,11 +594,13 @@ public:
         delete layout();
 
         Layouting::Grid grid;
-        for (KitAspect *aspect : KitManager::kitAspects()) {
-            if (k && k->isMutable(aspect->id())) {
-                KitAspectWidget *widget = aspect->createConfigWidget(k);
-                m_widgets << widget;
-                grid.addItems({aspect->displayName(), widget, Layouting::br});
+        for (KitAspectFactory *factory : KitManager::kitAspectFactories()) {
+            if (k && k->isMutable(factory->id())) {
+                KitAspect *aspect = factory->createKitAspect(k);
+                m_kitAspects << aspect;
+                auto label = new QLabel(aspect->displayName());
+                m_labels << label;
+                grid.addItems({label, aspect, Layouting::br});
             }
         }
         grid.attachTo(this);
@@ -605,7 +608,7 @@ public:
 
         m_kit = k;
 
-        setHidden(m_widgets.isEmpty());
+        setHidden(m_kitAspects.isEmpty());
     }
 
 private:
@@ -615,12 +618,12 @@ private:
             return;
 
         bool addedMutables = false;
-        QList<const KitAspect *> knownList
-            = Utils::transform(m_widgets, &KitAspectWidget::kitInformation);
+        QList<const KitAspectFactory *> knownList
+            = Utils::transform(m_kitAspects, &KitAspect::factory);
 
-        for (KitAspect *aspect : KitManager::kitAspects()) {
-            const Utils::Id currentId = aspect->id();
-            if (m_kit->isMutable(currentId) && !knownList.removeOne(aspect)) {
+        for (KitAspectFactory *factory : KitManager::kitAspectFactories()) {
+            const Utils::Id currentId = factory->id();
+            if (m_kit->isMutable(currentId) && !knownList.removeOne(factory)) {
                 addedMutables = true;
                 break;
             }
@@ -632,13 +635,14 @@ private:
             setKit(m_kit);
         } else {
             // Refresh all widgets if the number of mutable settings did not change
-            for (KitAspectWidget *w : std::as_const(m_widgets))
+            for (KitAspect *w : std::as_const(m_kitAspects))
                 w->refresh();
         }
     }
 
     Kit *m_kit = nullptr;
-    QList<KitAspectWidget *> m_widgets;
+    QList<QWidget *> m_labels;
+    QList<KitAspect *> m_kitAspects;
 };
 
 /////////
@@ -1592,7 +1596,6 @@ void MiniProjectTargetSelector::switchToProjectsMode()
     hide();
 }
 
-} // namespace Internal
-} // namespace ProjectExplorer
+} // ProjectExplorer::Internal
 
 #include <miniprojecttargetselector.moc>

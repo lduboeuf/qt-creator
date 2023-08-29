@@ -6,7 +6,7 @@
 #include "makefileparse.h"
 #include "qmakebuildconfiguration.h"
 #include "qmakebuildinfo.h"
-#include "qmakekitinformation.h"
+#include "qmakekitaspect.h"
 #include "qmakenodes.h"
 #include "qmakeproject.h"
 #include "qmakeprojectmanagerconstants.h"
@@ -33,7 +33,7 @@
 #include <projectexplorer/toolchain.h>
 
 #include <qtsupport/qtbuildaspects.h>
-#include <qtsupport/qtkitinformation.h>
+#include <qtsupport/qtkitaspect.h>
 #include <qtsupport/qtversionmanager.h>
 
 #include <utils/process.h>
@@ -187,19 +187,19 @@ QmakeBuildConfiguration::~QmakeBuildConfiguration()
     delete m_buildSystem;
 }
 
-void QmakeBuildConfiguration::toMap(QVariantMap &map) const
+void QmakeBuildConfiguration::toMap(Store &map) const
 {
     BuildConfiguration::toMap(map);
-    map.insert(QLatin1String(BUILD_CONFIGURATION_KEY), int(m_qmakeBuildConfiguration));
+    map.insert(BUILD_CONFIGURATION_KEY, int(m_qmakeBuildConfiguration));
 }
 
-void QmakeBuildConfiguration::fromMap(const QVariantMap &map)
+void QmakeBuildConfiguration::fromMap(const Store &map)
 {
     BuildConfiguration::fromMap(map);
     if (hasError())
         return;
 
-    m_qmakeBuildConfiguration = QtVersion::QmakeBuildConfigs(map.value(QLatin1String(BUILD_CONFIGURATION_KEY)).toInt());
+    m_qmakeBuildConfiguration = QtVersion::QmakeBuildConfigs(map.value(BUILD_CONFIGURATION_KEY).toInt());
 
     m_lastKitState = LastKitState(kit());
 }

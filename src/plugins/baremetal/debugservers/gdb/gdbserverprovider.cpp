@@ -120,7 +120,7 @@ bool GdbServerProvider::operator==(const IDebugServerProvider &other) const
             && m_useExtendedRemote == p->m_useExtendedRemote;
 }
 
-void GdbServerProvider::toMap(QVariantMap &data) const
+void GdbServerProvider::toMap(Store &data) const
 {
     IDebugServerProvider::toMap(data);
     data.insert(startupModeKeyC, m_startupMode);
@@ -153,7 +153,7 @@ bool GdbServerProvider::aboutToRun(DebuggerRunTool *runTool, QString &errorMessa
         return false;
     }
 
-    Runnable inferior;
+    ProcessRunData inferior;
     inferior.command.setExecutable(bin);
     if (const auto argAspect = runControl->aspect<ArgumentsAspect>())
         inferior.command.setArguments(argAspect->arguments);
@@ -179,7 +179,7 @@ RunWorker *GdbServerProvider::targetRunner(RunControl *runControl) const
     return new GdbServerProviderRunner(runControl, command());
 }
 
-void GdbServerProvider::fromMap(const QVariantMap &data)
+void GdbServerProvider::fromMap(const Store &data)
 {
     IDebugServerProvider::fromMap(data);
     m_startupMode = static_cast<StartupMode>(data.value(startupModeKeyC).toInt());

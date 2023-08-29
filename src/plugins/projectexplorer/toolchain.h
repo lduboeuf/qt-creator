@@ -15,13 +15,9 @@
 #include <utils/aspects.h>
 #include <utils/cpplanguage_details.h>
 #include <utils/environment.h>
-#include <utils/fileutils.h>
-#include <utils/id.h>
+#include <utils/store.h>
 
 #include <QDateTime>
-#include <QObject>
-#include <QStringList>
-#include <QVariantMap>
 
 #include <functional>
 #include <memory>
@@ -44,6 +40,7 @@ QString languageId(Language l);
 } // namespace Toolchain
 } // namespace Deprecated
 
+class GccToolChain;
 class ToolChainConfigWidget;
 class ToolChainFactory;
 class Kit;
@@ -146,7 +143,7 @@ public:
 
     // Used by the toolchainmanager to save user-generated tool chains.
     // Make sure to call this function when deriving!
-    virtual void toMap(QVariantMap &map) const;
+    virtual void toMap(Utils::Store &map) const;
     virtual Tasks validateKit(const Kit *k) const;
 
     virtual bool isJobCountSupported() const { return true; }
@@ -165,6 +162,7 @@ public:
     };
 
     virtual int priority() const { return PriorityNormal; }
+    virtual GccToolChain *asGccToolChain() { return nullptr; }
 
 protected:
     explicit ToolChain(Utils::Id typeId);
@@ -172,9 +170,9 @@ protected:
     void setTypeDisplayName(const QString &typeName);
 
     void setTargetAbiNoSignal(const Abi &abi);
-    void setTargetAbiKey(const QString &abiKey);
+    void setTargetAbiKey(const Utils::Key &abiKey);
 
-    void setCompilerCommandKey(const QString &commandKey);
+    void setCompilerCommandKey(const Utils::Key &commandKey);
 
     const MacrosCache &predefinedMacrosCache() const;
     const HeaderPathsCache &headerPathsCache() const;
@@ -182,7 +180,7 @@ protected:
     void toolChainUpdated();
 
     // Make sure to call this function when deriving!
-    virtual void fromMap(const QVariantMap &data);
+    virtual void fromMap(const Utils::Store &data);
 
     void reportError();
     bool hasError() const;
@@ -212,8 +210,8 @@ public:
     BadToolchain(const Utils::FilePath &filePath, const Utils::FilePath &symlinkTarget,
                  const QDateTime &timestamp);
 
-    QVariantMap toMap() const;
-    static BadToolchain fromMap(const QVariantMap &map);
+    Utils::Store toMap() const;
+    static BadToolchain fromMap(const Utils::Store &map);
 
     Utils::FilePath filePath;
     Utils::FilePath symlinkTarget;
@@ -267,11 +265,11 @@ public:
     virtual bool canCreate() const;
     virtual ToolChain *create() const;
 
-    ToolChain *restore(const QVariantMap &data);
+    ToolChain *restore(const Utils::Store &data);
 
-    static QByteArray idFromMap(const QVariantMap &data);
-    static Utils::Id typeIdFromMap(const QVariantMap &data);
-    static void autoDetectionToMap(QVariantMap &data, bool detected);
+    static QByteArray idFromMap(const Utils::Store &data);
+    static Utils::Id typeIdFromMap(const Utils::Store &data);
+    static void autoDetectionToMap(Utils::Store &data, bool detected);
 
     static ToolChain *createToolChain(Utils::Id toolChainType);
 

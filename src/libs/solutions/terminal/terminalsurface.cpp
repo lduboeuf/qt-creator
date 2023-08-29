@@ -142,6 +142,41 @@ struct TerminalSurfacePrivate
 
         VTermState *vts = vterm_obtain_state(m_vterm.get());
         vterm_state_set_unrecognised_fallbacks(vts, &m_vtermStateFallbacks, this);
+
+        memset(&m_vtermSelectionCallbacks, 0, sizeof(m_vtermSelectionCallbacks));
+
+        m_vtermSelectionCallbacks.query = [](VTermSelectionMask mask, void *user) {
+            if (!(mask & 0xF))
+                return 0;
+
+            auto p = static_cast<TerminalSurfacePrivate *>(user);
+            if (p->m_surfaceIntegration)
+                p->m_surfaceIntegration->onGetClipboard();
+
+            return 0;
+        };
+
+        m_vtermSelectionCallbacks.set =
+            [](VTermSelectionMask mask, VTermStringFragment frag, void *user) {
+                if (!(mask & 0xF))
+                    return 0;
+
+                auto p = static_cast<TerminalSurfacePrivate *>(user);
+                if (frag.initial)
+                    p->m_selectionBuffer.clear();
+
+                p->m_selectionBuffer.append(frag.str, frag.len);
+                if (!frag.final)
+                    return 1;
+
+                if (p->m_surfaceIntegration)
+                    p->m_surfaceIntegration->onSetClipboard(p->m_selectionBuffer);
+
+                return 1;
+            };
+
+        vterm_state_set_selection_callbacks(vts, &m_vtermSelectionCallbacks, this, nullptr, 256);
+
         vterm_state_set_bold_highbright(vts, true);
 
         VTermColor fg;
@@ -319,6 +354,8 @@ struct TerminalSurfacePrivate
             break;
         case VTERM_N_PROPS:
             break;
+        case VTERM_PROP_FOCUSREPORT:
+            break;
         }
         return 1;
     }
@@ -363,6 +400,8 @@ struct TerminalSurfacePrivate
     VTermScreenCallbacks m_vtermScreenCallbacks;
     VTermStateFallbacks m_vtermStateFallbacks;
 
+    VTermSelectionCallbacks m_vtermSelectionCallbacks;
+
     Cursor m_cursor;
     QString m_currentCommand;
 
@@ -375,6 +414,7 @@ struct TerminalSurfacePrivate
     TerminalSurface *q;
     QTimer m_delayWriteTimer;
     QByteArray m_writeBuffer;
+    QByteArray m_selectionBuffer;
 
     TerminalSurface::WriteToPty m_writeToPty;
 };
@@ -535,11 +575,10 @@ void TerminalSurface::sendKey(QKeyEvent *event)
         // like ctrl+i for tab or ctrl+j for newline.
 
         // Workaround for "ALT+SHIFT+/" (\ on german mac keyboards)
-        if (mod == (VTERM_MOD_SHIFT | VTERM_MOD_ALT) && event->key() == Qt::Key_Slash) {
+        if (mod == (VTERM_MOD_SHIFT | VTERM_MOD_ALT) && event->key() == Qt::Key_Slash)
             mod = VTERM_MOD_NONE;
-        }
 
-        vterm_keyboard_unichar(d->m_vterm.get(), event->text().toUcs4()[0], VTERM_MOD_NONE);
+        vterm_keyboard_unichar(d->m_vterm.get(), event->text().toUcs4()[0], mod);
     } else if (mod == VTERM_MOD_CTRL && event->key() >= Qt::Key_A && event->key() < Qt::Key_Z) {
         vterm_keyboard_unichar(d->m_vterm.get(), 'a' + (event->key() - Qt::Key_A), mod);
     }
@@ -590,11 +629,27 @@ void TerminalSurface::mouseButton(Qt::MouseButton button,
     case Qt::ExtraButton2:
         btnIdx = 5;
         break;
+    case Qt::ExtraButton3:
+        btnIdx = 6;
+        break;
+    case Qt::ExtraButton4:
+        btnIdx = 7;
+        break;
     default:
         return;
     }
 
     vterm_mouse_button(d->m_vterm.get(), btnIdx, pressed, qtModifierToVTerm(modifiers));
+}
+
+void TerminalSurface::sendFocus(bool hasFocus)
+{
+    VTermState *vts = vterm_obtain_state(d->m_vterm.get());
+
+    if (hasFocus)
+        vterm_state_focus_in(vts);
+    else
+        vterm_state_focus_out(vts);
 }
 
 void TerminalSurface::setWriteToPty(WriteToPty writeToPty)

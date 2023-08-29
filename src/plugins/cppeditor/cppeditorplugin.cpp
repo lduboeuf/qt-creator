@@ -42,6 +42,7 @@
 #include "cppmodelmanager_test.h"
 #include "cpppointerdeclarationformatter_test.h"
 #include "cppquickfix_test.h"
+#include "cpprenaming_test.h"
 #include "cppsourceprocessor_test.h"
 #include "cppuseselections_test.h"
 #include "fileandtokenactions_test.h"
@@ -396,6 +397,19 @@ void CppEditorPlugin::initialize()
     connect(showPreprocessedInSplitAction, &QAction::triggered,
             this, [] { CppModelManager::showPreprocessedFile(true); });
 
+    QAction * const foldCommentsAction = new QAction(Tr::tr("Fold All Comment Blocks"), this);
+    command = ActionManager::registerAction(foldCommentsAction,
+                                            "CppTools.FoldCommentBlocks", context);
+    mcpptools->addAction(command);
+    contextMenu->addAction(command, Constants::G_CONTEXT_FIRST);
+    connect(foldCommentsAction, &QAction::triggered, this, [] { CppModelManager::foldComments(); });
+    QAction * const unfoldCommentsAction = new QAction(Tr::tr("Unfold All Comment Blocks"), this);
+    command = ActionManager::registerAction(unfoldCommentsAction,
+                                            "CppTools.UnfoldCommentBlocks", context);
+    mcpptools->addAction(command);
+    contextMenu->addAction(command, Constants::G_CONTEXT_FIRST);
+    connect(unfoldCommentsAction, &QAction::triggered, this, [] { CppModelManager::unfoldComments(); });
+
     QAction *const findUnusedFunctionsAction = new QAction(Tr::tr("Find Unused Functions"), this);
     command = ActionManager::registerAction(findUnusedFunctionsAction,
                                             "CppTools.FindUnusedFunctions");
@@ -496,6 +510,7 @@ void CppEditorPlugin::initialize()
     addTest<Tests::IncludeHierarchyTest>();
     addTest<Tests::InsertVirtualMethodsTest>();
     addTest<Tests::QuickfixTest>();
+    addTest<Tests::GlobalRenamingTest>();
     addTest<Tests::SelectionsTest>();
 #endif
 }

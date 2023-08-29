@@ -11,7 +11,7 @@
 #include <projectexplorer/buildsystem.h>
 #include <projectexplorer/deployconfiguration.h>
 #include <projectexplorer/devicesupport/idevice.h>
-#include <projectexplorer/kitinformation.h>
+#include <projectexplorer/kitaspects.h>
 #include <projectexplorer/makestep.h>
 #include <projectexplorer/processparameters.h>
 #include <projectexplorer/projectexplorerconstants.h>
@@ -38,7 +38,7 @@ public:
     MakeInstallStep(BuildStepList *parent, Id id);
 
 private:
-    void fromMap(const QVariantMap &map) override;
+    void fromMap(const Store &map) override;
     QWidget *createConfigWidget() override;
     bool init() override;
     Tasking::GroupItem runRecipe() final;
@@ -257,7 +257,7 @@ void MakeInstallStep::updateFromCustomCommandLineAspect()
     setUserArguments(ProcessArgs::joinArgs(tokens.mid(1)));
 }
 
-void MakeInstallStep::fromMap(const QVariantMap &map)
+void MakeInstallStep::fromMap(const Store &map)
 {
     MakeStep::fromMap(map);
     if (hasError())

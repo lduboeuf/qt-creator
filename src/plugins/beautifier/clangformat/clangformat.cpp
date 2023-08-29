@@ -235,10 +235,10 @@ static ClangFormatSettings &settings()
     return theSettings;
 }
 
-class ClangFormatOptionsPageWidget : public Core::IOptionsPageWidget
+class ClangFormatSettingsPageWidget : public Core::IOptionsPageWidget
 {
 public:
-    explicit ClangFormatOptionsPageWidget()
+    ClangFormatSettingsPageWidget()
     {
         ClangFormatSettings &s = settings();
         QGroupBox *options = nullptr;
@@ -297,7 +297,8 @@ public:
         connect(styleButtonGroup, &QButtonGroup::buttonClicked, this, updateEnabled);
         connect(&s.predefinedStyle, &SelectionAspect::volatileValueChanged, this, updateEnabled);
 
-        setOnApply([configurations] {
+        setOnApply([configurations, customizedStyleButton] {
+            settings().usePredefinedStyle.setValue(!customizedStyleButton->isChecked());
             settings().customStyle.setValue(configurations->currentConfiguration());
             settings().save();
         });
@@ -308,21 +309,6 @@ public:
         options->setEnabled(s.command.pathChooser()->isValid());
     }
 };
-
-class ClangFormatOptionsPage final : public Core::IOptionsPage
-{
-public:
-    ClangFormatOptionsPage()
-    {
-        setId("ClangFormat");
-        setDisplayName(Tr::tr("Clang Format"));
-        setCategory(Constants::OPTION_CATEGORY);
-        setWidgetCreator([] { return new ClangFormatOptionsPageWidget; });
-    }
-};
-
-const ClangFormatOptionsPage settingsPage;
-
 
 // ClangFormat
 
@@ -514,5 +500,22 @@ Command ClangFormat::textCommand(int offset, int length) const
     cmd.addOption("-length=" + QString::number(length));
     return cmd;
 }
+
+
+// ClangFormatSettingsPage
+
+class ClangFormatSettingsPage final : public Core::IOptionsPage
+{
+public:
+    ClangFormatSettingsPage()
+    {
+        setId("ClangFormat");
+        setDisplayName(Tr::tr("Clang Format"));
+        setCategory(Constants::OPTION_CATEGORY);
+        setWidgetCreator([] { return new ClangFormatSettingsPageWidget; });
+    }
+};
+
+const ClangFormatSettingsPage settingsPage;
 
 } // Beautifier::Internal

@@ -33,6 +33,9 @@ private:
     template <typename Task> friend class TaskAdapter;
     friend class TaskNode;
     TaskInterface() = default;
+#ifdef Q_QDOC
+protected:
+#endif
     virtual void start() = 0;
 };
 
@@ -41,14 +44,13 @@ class TASKING_EXPORT TreeStorageBase
 public:
     bool isValid() const;
 
-protected:
+private:
     using StorageConstructor = std::function<void *(void)>;
     using StorageDestructor = std::function<void(void *)>;
 
     TreeStorageBase(StorageConstructor ctor, StorageDestructor dtor);
     void *activeStorageVoid() const;
 
-private:
     int createStorage() const;
     void deleteStorage(int id) const;
     void activateStorage(int id) const;
@@ -71,13 +73,15 @@ private:
         int m_storageCounter = 0;
     };
     QSharedPointer<StorageData> m_storageData;
+
+    template <typename StorageStruct> friend class TreeStorage;
     friend ExecutionContextActivator;
     friend TaskContainer;
     friend TaskTreePrivate;
 };
 
 template <typename StorageStruct>
-class TreeStorage : public TreeStorageBase
+class TreeStorage final : public TreeStorageBase
 {
 public:
     TreeStorage() : TreeStorageBase(TreeStorage::ctor(), TreeStorage::dtor()) {}
@@ -459,16 +463,7 @@ private:
     std::optional<int> m_timerId;
 };
 
+using TaskTreeTask = CustomTask<TaskTreeTaskAdapter>;
+using TimeoutTask = CustomTask<TimeoutTaskAdapter>;
+
 } // namespace Tasking
-
-#define TASKING_DECLARE_TASK(CustomTaskName, TaskAdapterClass)\
-namespace Tasking { using CustomTaskName = CustomTask<TaskAdapterClass>; }
-
-#define TASKING_DECLARE_TEMPLATE_TASK(CustomTaskName, TaskAdapterClass)\
-namespace Tasking {\
-template <typename ...Args>\
-using CustomTaskName = CustomTask<TaskAdapterClass<Args...>>;\
-} // namespace Tasking
-
-TASKING_DECLARE_TASK(TaskTreeTask, TaskTreeTaskAdapter);
-TASKING_DECLARE_TASK(TimeoutTask, TimeoutTaskAdapter);

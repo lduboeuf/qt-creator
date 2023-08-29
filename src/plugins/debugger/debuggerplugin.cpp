@@ -14,7 +14,7 @@
 #include "debuggermainwindow.h"
 #include "debuggerrunconfigurationaspect.h"
 #include "debuggerruncontrol.h"
-#include "debuggerkitinformation.h"
+#include "debuggerkitaspect.h"
 #include "debuggertr.h"
 #include "breakhandler.h"
 #include "enginemanager.h"
@@ -60,6 +60,7 @@
 #include <projectexplorer/devicesupport/deviceprocessesdialog.h>
 #include <projectexplorer/devicesupport/sshparameters.h>
 #include <projectexplorer/itaskhandler.h>
+#include <projectexplorer/kitaspects.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/projectexplorericons.h>
@@ -104,20 +105,21 @@
 #include <QFileDialog>
 #include <QHeaderView>
 #include <QInputDialog>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QMenu>
 #include <QMessageBox>
 #include <QPointer>
 #include <QPushButton>
 #include <QScopeGuard>
 #include <QSettings>
+#include <QSortFilterProxyModel>
 #include <QStackedWidget>
 #include <QTextBlock>
 #include <QToolButton>
 #include <QTreeWidget>
 #include <QVBoxLayout>
 #include <QVariant>
-#include <QJsonDocument>
-#include <QJsonObject>
 
 #ifdef WITH_TESTS
 
@@ -508,6 +510,7 @@ public:
         splitter->setObjectName("DebugModeWidget");
 
         mainWindow->addSubPerspectiveSwitcher(EngineManager::engineChooser());
+        mainWindow->addSubPerspectiveSwitcher(EngineManager::dapEngineChooser());
 
         setWidget(splitter);
 
@@ -609,6 +612,21 @@ public:
         BreakpointManager::setOrRemoveBreakpoint(data, message);
     }
 
+    void addFontSizeAdaptation(QWidget *widget);
+    BaseTreeView *createBreakpointManagerView(const QByteArray &settingsKey);
+    QWidget *createBreakpointManagerWindow(BaseTreeView *breakpointManagerView,
+                                           const QString &title,
+                                           const QString &objectName);
+
+    BaseTreeView *createEngineManagerView(QAbstractItemModel *model,
+                                          const QString &title,
+                                          const QByteArray &settingsKey);
+    QWidget *createEngineManagerWindow(BaseTreeView *engineManagerView,
+                                       const QString &title,
+                                       const QString &objectName);
+
+    void createDapDebuggerPerspective(QWidget *globalLogWindow);
+
     void editorOpened(IEditor *editor);
     void updateBreakMenuItem(IEditor *editor);
     void requestMark(TextEditorWidget *widget, int lineNumber,
@@ -654,7 +672,7 @@ public:
     ProxyAction m_hiddenStopAction;
     QAction m_undisturbableAction;
     OptionalAction m_startAction;
-    OptionalAction m_startCmakeAction;
+    OptionalAction m_startDapAction;
     QAction m_debugWithoutDeployAction{Tr::tr("Start Debugging Without Deployment")};
     QAction m_startAndDebugApplicationAction{Tr::tr("Start and Debug External Application...")};
     QAction m_attachToRunningApplication{Tr::tr("Attach to Running Application...")};
@@ -681,15 +699,11 @@ public:
     Console m_console; // ensure Debugger Console is created before settings are taken into account
     QStringList m_arguments;
 
-    DebuggerItemManager m_debuggerItemManager;
-
     QList<IOptionsPage *> m_optionPages;
     IContext m_debugModeContext;
 
     Perspective m_perspective{Constants::PRESET_PERSPECTIVE_ID, Tr::tr("Debugger")};
-    std::unique_ptr<Perspective> m_perspectiveCmake;
-
-    DebuggerKitAspect debuggerKitAspect;
+    Perspective m_perspectiveDap{Constants::DAP_PERSPECTIVE_ID, Tr::tr("DAP")};
 
     DebuggerRunWorkerFactory debuggerWorkerFactory;
 
@@ -698,6 +712,84 @@ public:
 //            const bool isDebuggableScript = mainScript.endsWith(".py"); // Only Python for now.
 //            return isDebuggableScript;
 };
+
+static void addLabel(QWidget *widget, const QString &text)
+{
+    auto vbox = qobject_cast<QVBoxLayout *>(widget->layout());
+    QTC_ASSERT(vbox, return);
+    auto label = new QLabel(widget);
+    label->setText(text);
+    label->setContentsMargins(6, 6, 6, 6);
+    vbox->insertWidget(0, label);
+};
+
+void DebuggerPluginPrivate::addFontSizeAdaptation(QWidget *widget)
+{
+    QObject::connect(TextEditorSettings::instance(),
+                     &TextEditorSettings::fontSettingsChanged,
+                     this,
+                     [widget](const FontSettings &fs) {
+                         if (!settings().fontSizeFollowsEditor())
+                             return;
+                         qreal size = fs.fontZoom() * fs.fontSize() / 100.;
+                         QFont font = widget->font();
+                         font.setPointSizeF(size);
+                         widget->setFont(font);
+                     });
+};
+
+BaseTreeView *DebuggerPluginPrivate::createBreakpointManagerView(const QByteArray &settingsKey)
+{
+    auto breakpointManagerView = new BaseTreeView;
+    breakpointManagerView->setActivationMode(Utils::DoubleClickActivation);
+    breakpointManagerView->setIconSize(QSize(10, 10));
+    breakpointManagerView->setWindowIcon(Icons::BREAKPOINTS.icon());
+    breakpointManagerView->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    breakpointManagerView->setSettings(ICore::settings(), settingsKey);
+    breakpointManagerView->setRootIsDecorated(true);
+    breakpointManagerView->setModel(BreakpointManager::model());
+    breakpointManagerView->setSpanColumn(BreakpointFunctionColumn);
+    breakpointManagerView->enableColumnHiding();
+    return breakpointManagerView;
+}
+
+QWidget *DebuggerPluginPrivate::createBreakpointManagerWindow(BaseTreeView *breakpointManagerView,
+                                                              const QString &title,
+                                                              const QString &objectName)
+{
+    auto breakpointManagerWindow = addSearch(breakpointManagerView);
+    breakpointManagerWindow->setWindowTitle(title);
+    breakpointManagerWindow->setObjectName(objectName);
+    addLabel(breakpointManagerWindow, breakpointManagerWindow->windowTitle());
+    addFontSizeAdaptation(breakpointManagerWindow);
+    return breakpointManagerWindow;
+}
+
+BaseTreeView *DebuggerPluginPrivate::createEngineManagerView(QAbstractItemModel *model,
+                                                             const QString &title,
+                                                             const QByteArray &settingsKey)
+{
+    auto engineManagerView = new BaseTreeView;
+    engineManagerView->setWindowTitle(title);
+    engineManagerView->setSettings(ICore::settings(), settingsKey);
+    engineManagerView->setIconSize(QSize(10, 10));
+    engineManagerView->setModel(model);
+    engineManagerView->setSelectionMode(QAbstractItemView::SingleSelection);
+    engineManagerView->enableColumnHiding();
+    return engineManagerView;
+}
+
+QWidget *DebuggerPluginPrivate::createEngineManagerWindow(BaseTreeView *engineManagerView,
+                                                          const QString &title,
+                                                          const QString &objectName)
+{
+    auto engineManagerWindow = addSearch(engineManagerView);
+    engineManagerWindow->setWindowTitle(title);
+    engineManagerWindow->setObjectName(objectName);
+    addLabel(engineManagerWindow, engineManagerWindow->windowTitle());
+    addFontSizeAdaptation(engineManagerWindow);
+    return engineManagerWindow;
+}
 
 DebuggerPluginPrivate::DebuggerPluginPrivate(const QStringList &arguments)
 {
@@ -765,58 +857,19 @@ DebuggerPluginPrivate::DebuggerPluginPrivate(const QStringList &arguments)
                           Tr::tr("Debugger Runtime"),
                           Tr::tr("Issues with starting the debugger.")});
 
-    const auto addLabel = [](QWidget *widget, const QString &text) {
-        auto vbox = qobject_cast<QVBoxLayout *>(widget->layout());
-        QTC_ASSERT(vbox, return);
-        auto label = new QLabel(widget);
-        label->setText(text);
-        label->setContentsMargins(6, 6, 6, 6);
-        vbox->insertWidget(0, label);
-    };
-
-    const auto addFontSizeAdaptation = [this](QWidget *widget) {
-        QObject::connect(TextEditorSettings::instance(), &TextEditorSettings::fontSettingsChanged,
-                         this, [widget](const FontSettings &fs) {
-            if (!settings().fontSizeFollowsEditor())
-                return;
-            qreal size = fs.fontZoom() * fs.fontSize() / 100.;
-            QFont font = widget->font();
-            font.setPointSizeF(size);
-            widget->setFont(font);
-        });
-    };
-
-    auto breakpointManagerView = new BaseTreeView;
-    breakpointManagerView->setActivationMode(Utils::DoubleClickActivation);
-    breakpointManagerView->setIconSize(QSize(10, 10));
-    breakpointManagerView->setWindowIcon(Icons::BREAKPOINTS.icon());
-    breakpointManagerView->setSelectionMode(QAbstractItemView::ExtendedSelection);
-    breakpointManagerView->setSettings(ICore::settings(), "Debugger.BreakWindow");
-    breakpointManagerView->setRootIsDecorated(true);
-    breakpointManagerView->setModel(BreakpointManager::model());
-    breakpointManagerView->setSpanColumn(BreakpointFunctionColumn);
-    breakpointManagerView->enableColumnHiding();
-
-    auto breakpointManagerWindow = addSearch(breakpointManagerView);
-    breakpointManagerWindow->setWindowTitle(Tr::tr("Breakpoint Preset"));
-    breakpointManagerWindow->setObjectName("Debugger.Docks.BreakpointManager");
-    addLabel(breakpointManagerWindow, breakpointManagerWindow->windowTitle());
-    addFontSizeAdaptation(breakpointManagerWindow);
+    auto breakpointManagerView = createBreakpointManagerView("Debugger.BreakWindow");
+    auto breakpointManagerWindow
+        = createBreakpointManagerWindow(breakpointManagerView,
+                                        Tr::tr("Breakpoint Preset"),
+                                        "Debugger.Docks.BreakpointManager");
 
     // Snapshot
-    auto engineManagerView = new BaseTreeView;
-    engineManagerView->setWindowTitle(Tr::tr("Running Debuggers"));
-    engineManagerView->setSettings(ICore::settings(), "Debugger.SnapshotView");
-    engineManagerView->setIconSize(QSize(10, 10));
-    engineManagerView->setModel(EngineManager::model());
-    engineManagerView->setSelectionMode(QAbstractItemView::SingleSelection);
-    engineManagerView->enableColumnHiding();
-
-    auto engineManagerWindow = addSearch(engineManagerView);
-    engineManagerWindow->setWindowTitle(Tr::tr("Debugger Perspectives"));
-    engineManagerWindow->setObjectName("Debugger.Docks.Snapshots");
-    addLabel(engineManagerWindow, engineManagerWindow->windowTitle());
-    addFontSizeAdaptation(engineManagerWindow);
+    auto engineManagerView = createEngineManagerView(EngineManager::model(),
+                                                     Tr::tr("Running Debuggers"),
+                                                     "Debugger.SnapshotView");
+    auto engineManagerWindow = createEngineManagerWindow(engineManagerView,
+                                                         Tr::tr("Debugger Perspectives"),
+                                                         "Debugger.Docks.Snapshots");
 
     // Logging
     auto globalLogWindow = new GlobalLogWindow;
@@ -829,11 +882,6 @@ DebuggerPluginPrivate::DebuggerPluginPrivate(const QStringList &arguments)
     // The main "Start Debugging" action. Acts as "Continue" at times.
     connect(&m_startAction, &QAction::triggered, this, [] {
         ProjectExplorerPlugin::runStartupProject(ProjectExplorer::Constants::DEBUG_RUN_MODE, false);
-    });
-
-    connect(&m_startCmakeAction, &QAction::triggered, this, [] {
-//        ProjectTree::currentBuildSystem()->requestDebugging();
-        ProjectExplorerPlugin::runStartupProject(ProjectExplorer::Constants::CMAKE_DEBUG_RUN_MODE, true);
     });
 
     connect(&m_debugWithoutDeployAction, &QAction::triggered, this, [] {
@@ -1168,6 +1216,10 @@ DebuggerPluginPrivate::DebuggerPluginPrivate(const QStringList &arguments)
     connect(settings().settingsDialog.action(), &QAction::triggered, this,
             [] { ICore::showOptionsDialog(DEBUGGER_COMMON_SETTINGS_ID); }, Qt::QueuedConnection);
 
+    EngineManager::registerDefaultPerspective(Tr::tr("Debugger Preset"),
+                                              {},
+                                              Constants::PRESET_PERSPECTIVE_ID);
+
     m_perspective.useSubPerspectiveSwitcher(EngineManager::engineChooser());
     m_perspective.addToolBarAction(&m_startAction);
 
@@ -1175,28 +1227,7 @@ DebuggerPluginPrivate::DebuggerPluginPrivate(const QStringList &arguments)
     m_perspective.addWindow(breakpointManagerWindow, Perspective::SplitHorizontal, engineManagerWindow);
     m_perspective.addWindow(globalLogWindow, Perspective::AddToTab, nullptr, false, Qt::TopDockWidgetArea);
 
-    if (qEnvironmentVariableIsSet("QTC_USE_CMAKE_DEBUGGER")) {
-        m_perspectiveCmake = std::make_unique<Perspective>(Constants::CMAKE_PERSPECTIVE_ID,
-                                                           Tr::tr("CMake"));
-        m_startCmakeAction.setText(Tr::tr("Start CMake Debugging"));
-        m_startCmakeAction.setEnabled(true);
-        m_startCmakeAction.setIcon(startIcon(true));
-        m_startCmakeAction.setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-        m_startCmakeAction.setVisible(true);
-
-        m_perspectiveCmake->addToolBarAction(&m_startCmakeAction);
-
-        m_perspectiveCmake->addWindow(engineManagerWindow, Perspective::SplitVertical, nullptr);
-        m_perspectiveCmake->addWindow(breakpointManagerWindow,
-                                      Perspective::SplitHorizontal,
-                                      engineManagerWindow);
-        m_perspectiveCmake->addWindow(globalLogWindow,
-                                      Perspective::AddToTab,
-                                      nullptr,
-                                      false,
-                                      Qt::TopDockWidgetArea);
-    }
-
+    createDapDebuggerPerspective(globalLogWindow);
     setInitialState();
 
     connect(ProjectManager::instance(), &ProjectManager::startupProjectChanged,
@@ -1207,6 +1238,61 @@ DebuggerPluginPrivate::DebuggerPluginPrivate(const QStringList &arguments)
         this, &DebuggerPluginPrivate::updatePresetState);
 }
 
+void DebuggerPluginPrivate::createDapDebuggerPerspective(QWidget *globalLogWindow)
+{
+    EngineManager::registerDefaultPerspective(Tr::tr("CMake Preset"),
+                                              "DAP",
+                                              ProjectExplorer::Constants::CMAKE_DEBUG_RUN_MODE);
+
+    EngineManager::registerDefaultPerspective(Tr::tr("GDB Preset"),
+                                              "DAP",
+                                              ProjectExplorer::Constants::DAP_GDB_DEBUG_RUN_MODE);
+
+    auto breakpointManagerView = createBreakpointManagerView("DAPDebugger.BreakWindow");
+    auto breakpointManagerWindow
+        = createBreakpointManagerWindow(breakpointManagerView,
+                                        Tr::tr("DAP Breakpoint Preset"),
+                                        "DAPDebugger.Docks.BreakpointManager");
+
+    // Snapshot
+    auto engineManagerView = createEngineManagerView(EngineManager::dapModel(),
+                                                     Tr::tr("Running Debuggers"),
+                                                     "DAPDebugger.SnapshotView");
+    auto engineManagerWindow = createEngineManagerWindow(engineManagerView,
+                                                         Tr::tr("DAP Debugger Perspectives"),
+                                                         "DAPDebugger.Docks.Snapshots");
+
+    connect(&m_startDapAction, &QAction::triggered, this, [] {
+        QComboBox *combo = qobject_cast<QComboBox *>(EngineManager::dapEngineChooser());
+        if (combo->currentText() == "CMake Preset") {
+            ProjectExplorerPlugin::runStartupProject(ProjectExplorer::Constants::CMAKE_DEBUG_RUN_MODE,
+                                                     true);
+        } else {
+            ProjectExplorerPlugin::runStartupProject(
+                ProjectExplorer::Constants::DAP_GDB_DEBUG_RUN_MODE, true);
+        }
+    });
+
+    m_perspectiveDap.addToolBarAction(&m_startDapAction);
+    m_startDapAction.setToolTip(Tr::tr("Start DAP Debugging"));
+    m_startDapAction.setText(Tr::tr("Start DAP Debugging"));
+    m_startDapAction.setEnabled(true);
+    m_startDapAction.setIcon(startIcon(true));
+    m_startDapAction.setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    m_startDapAction.setVisible(true);
+
+    m_perspectiveDap.useSubPerspectiveSwitcher(EngineManager::dapEngineChooser());
+
+    m_perspectiveDap.addWindow(engineManagerWindow, Perspective::SplitVertical, nullptr);
+    m_perspectiveDap.addWindow(breakpointManagerWindow,
+                               Perspective::SplitHorizontal,
+                               engineManagerWindow);
+    m_perspectiveDap.addWindow(globalLogWindow,
+                               Perspective::AddToTab,
+                               nullptr,
+                               false,
+                               Qt::TopDockWidgetArea);
+}
 
 DebuggerPluginPrivate::~DebuggerPluginPrivate()
 {
@@ -1772,17 +1858,17 @@ void DebuggerPlugin::autoDetectDebuggersForDevice(const FilePaths &searchPaths,
                                                   const QString &detectionSource,
                                                   QString *logMessage)
 {
-    dd->m_debuggerItemManager.autoDetectDebuggersForDevice(searchPaths, detectionSource, logMessage);
+    DebuggerItemManager::autoDetectDebuggersForDevice(searchPaths, detectionSource, logMessage);
 }
 
 void DebuggerPlugin::removeDetectedDebuggers(const QString &detectionSource, QString *logMessage)
 {
-    dd->m_debuggerItemManager.removeDetectedDebuggers(detectionSource, logMessage);
+    DebuggerItemManager::removeDetectedDebuggers(detectionSource, logMessage);
 }
 
 void DebuggerPlugin::listDetectedDebuggers(const QString &detectionSource, QString *logMessage)
 {
-    dd->m_debuggerItemManager.listDetectedDebuggers(detectionSource, logMessage);
+    DebuggerItemManager::listDetectedDebuggers(detectionSource, logMessage);
 }
 
 void DebuggerPluginPrivate::attachToQmlPort()
@@ -2059,9 +2145,7 @@ void DebuggerPluginPrivate::remoteCommand(const QStringList &options)
 
 void DebuggerPluginPrivate::extensionsInitialized()
 {
-    QTimer::singleShot(0, this, [this]{
-        m_debuggerItemManager.extensionsInitialized();
-    });
+    QTimer::singleShot(0, this, &DebuggerItemManager::restoreDebuggers);
 
     // If the CppEditor or QmlJS editor plugin is there, we want to add something to
     // the editor context menu.

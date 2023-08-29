@@ -312,8 +312,6 @@ public:
     bool revertProject(const FilePath &workingDir, const QStringList &args, bool unchangedOnly);
     bool managesDirectoryFstat(const FilePath &directory);
 
-    void applySettings();
-
     CommandLocator *m_commandLocator = nullptr;
     ParameterAction *m_editAction = nullptr;
     ParameterAction *m_addAction = nullptr;
@@ -339,9 +337,6 @@ public:
     QString m_commitMessageFileName;
     mutable QString m_tempFilePattern;
     QAction *m_menuAction = nullptr;
-
-    PerforceSettings m_settings;
-    PerforceSettingsPage m_settingsPage{&m_settings};
 
     ManagedDirectoryCache m_managedDirectoryCache;
 
@@ -378,8 +373,6 @@ PerforcePluginPrivate::PerforcePluginPrivate()
     Context context(PERFORCE_CONTEXT);
 
     dd = this;
-
-    m_settings.readSettings();
 
     const QString prefix = QLatin1String("p4");
     m_commandLocator = new CommandLocator("Perforce", prefix, prefix, this);
@@ -556,9 +549,12 @@ PerforcePluginPrivate::PerforcePluginPrivate()
     connect(m_filelogAction, &QAction::triggered, this, &PerforcePluginPrivate::filelogFile);
     perforceContainer->addAction(command);
 
-    QObject::connect(&m_settings, &AspectContainer::applied, this, [this] {
-        m_settings.clearTopLevel();
-        applySettings();
+    QObject::connect(&settings(), &AspectContainer::applied, this, [this] {
+        settings().clearTopLevel();
+        settings().writeSettings();
+        m_managedDirectoryCache.clear();
+        getTopLevel();
+        emit configurationChanged();
     });
 }
 
@@ -633,7 +629,7 @@ void PerforcePluginPrivate::diffCurrentProject()
 
 void PerforcePluginPrivate::diffAllOpened()
 {
-    p4Diff(m_settings.topLevel(), QStringList());
+    p4Diff(settings().topLevel(), QStringList());
 }
 
 void PerforcePluginPrivate::updateCurrentProject()
@@ -645,7 +641,7 @@ void PerforcePluginPrivate::updateCurrentProject()
 
 void PerforcePluginPrivate::updateAll()
 {
-    updateCheckout(m_settings.topLevel());
+    updateCheckout(settings().topLevel());
 }
 
 void PerforcePluginPrivate::revertCurrentProject()
@@ -695,7 +691,7 @@ void PerforcePluginPrivate::updateCheckout(const FilePath &workingDir, const QSt
 
 void PerforcePluginPrivate::printOpenedFileList()
 {
-    const PerforceResponse perforceResponse = runP4Cmd(m_settings.topLevel(), {"opened"},
+    const PerforceResponse perforceResponse = runP4Cmd(settings().topLevel(), {"opened"},
                                               CommandToWindow|StdErrToWindow|ErrorToWindow);
     if (perforceResponse.error || perforceResponse.stdOut.isEmpty())
         return;
@@ -791,7 +787,7 @@ IEditor *PerforcePluginPrivate::openPerforceSubmitEditor(const QString &fileName
     submitEditor->restrictToProjectFiles(depotFileNames);
     connect(submitEditor, &VcsBaseSubmitEditor::diffSelectedFiles,
             this, &PerforcePluginPrivate::slotSubmitDiff);
-    submitEditor->setCheckScriptWorkingDirectory(m_settings.topLevel());
+    submitEditor->setCheckScriptWorkingDirectory(settings().topLevel());
     return editor;
 }
 
@@ -804,7 +800,7 @@ void PerforcePluginPrivate::printPendingChanges()
         const int i = dia.changeNumber();
         QStringList args(QLatin1String("submit"));
         args << QLatin1String("-c") << QString::number(i);
-        runP4Cmd(m_settings.topLevel(), args,
+        runP4Cmd(settings().topLevel(), args,
                  CommandToWindow|StdOutToWindow|StdErrToWindow|ErrorToWindow);
     }
 }
@@ -893,8 +889,8 @@ void PerforcePluginPrivate::filelog(const FilePath &workingDir, const QString &f
     QTextCodec *codec = VcsBaseEditor::getCodec(workingDir, QStringList(fileName));
     QStringList args;
     args << QLatin1String("filelog") << QLatin1String("-li");
-    if (m_settings.logCount() > 0)
-        args << "-m" << QString::number(m_settings.logCount());
+    if (settings().logCount() > 0)
+        args << "-m" << QString::number(settings().logCount());
     if (!fileName.isEmpty())
         args.append(fileName);
     const PerforceResponse result = runP4Cmd(workingDir, args,
@@ -915,8 +911,8 @@ void PerforcePluginPrivate::changelists(const FilePath &workingDir, const QStrin
     QTextCodec *codec = VcsBaseEditor::getCodec(workingDir, QStringList(fileName));
     QStringList args;
     args << QLatin1String("changelists") << QLatin1String("-lit");
-    if (m_settings.logCount() > 0)
-        args << "-m" << QString::number(m_settings.logCount());
+    if (settings().logCount() > 0)
+        args << "-m" << QString::number(settings().logCount());
     if (!fileName.isEmpty())
         args.append(fileName);
     const PerforceResponse result = runP4Cmd(workingDir, args,
@@ -961,7 +957,7 @@ bool PerforcePluginPrivate::managesDirectory(const FilePath &directory, FilePath
     const bool rc = const_cast<PerforcePluginPrivate *>(this)->managesDirectoryFstat(directory);
     if (topLevel) {
         if (rc)
-            *topLevel = m_settings.topLevelSymLinkTarget();
+            *topLevel = settings().topLevelSymLinkTarget();
         else
             topLevel->clear();
     }
@@ -985,20 +981,20 @@ bool PerforcePluginPrivate::managesDirectoryFstat(const FilePath &directory)
         setTopLevel(entry.m_topLevel);
         return entry.m_isManaged;
     }
-    if (!m_settings.isValid()) {
-        if (m_settings.topLevel().isEmpty())
+    if (!settings().isValid()) {
+        if (settings().topLevel().isEmpty())
             getTopLevel(directory, true);
 
-        if (!m_settings.isValid())
+        if (!settings().isValid())
             return false;
     }
     // Determine value and insert into cache
     bool managed = false;
     do {
         // Quick check: Must be at or below top level and not "../../other_path"
-        const QString relativeDirArgs = m_settings.relativeToTopLevelArguments(directory.toString());
+        const QString relativeDirArgs = settings().relativeToTopLevelArguments(directory.toString());
         if (!relativeDirArgs.isEmpty() && relativeDirArgs.startsWith(QLatin1String(".."))) {
-            if (!m_settings.defaultEnv())
+            if (!settings().defaultEnv())
                 break;
             else
                 getTopLevel(directory, true);
@@ -1006,14 +1002,14 @@ bool PerforcePluginPrivate::managesDirectoryFstat(const FilePath &directory)
         // Is it actually managed by perforce?
         QStringList args;
         args << QLatin1String("fstat") << QLatin1String("-m1") << perforceRelativeFileArguments(relativeDirArgs);
-        const PerforceResponse result = runP4Cmd(m_settings.topLevel(), args,
+        const PerforceResponse result = runP4Cmd(settings().topLevel(), args,
                                                  RunFullySynchronous);
 
         managed = result.stdOut.contains(QLatin1String("depotFile"))
                   || result.stdErr.contains(QLatin1String("... - no such file(s)"));
     } while (false);
 
-    m_managedDirectoryCache.insert(directory, DirectoryCacheEntry(managed, m_settings.topLevel()));
+    m_managedDirectoryCache.insert(directory, DirectoryCacheEntry(managed, settings().topLevel()));
     return managed;
 }
 
@@ -1117,7 +1113,7 @@ bool PerforcePluginPrivate::isVcsFileOrDirectory(const FilePath &filePath) const
 
 bool PerforcePluginPrivate::isConfigured() const
 {
-    const FilePath binary = m_settings.p4BinaryPath();
+    const FilePath binary = settings().p4BinaryPath();
     return !binary.isEmpty() && binary.isExecutableFile();
 }
 
@@ -1152,7 +1148,7 @@ bool PerforcePluginPrivate::vcsOpen(const FilePath &filePath)
 IVersionControl::SettingsFlags PerforcePluginPrivate::settingsFlags() const
 {
     SettingsFlags rc;
-    if (m_settings.autoOpen())
+    if (settings().autoOpen())
         rc |= AutoOpen;
     return rc;
 }
@@ -1228,7 +1224,7 @@ PerforceResponse PerforcePluginPrivate::synchronousProcess(const FilePath &worki
 
     // Run, connect stderr to the output window
     Process process;
-    const int timeOutS = (flags & LongTimeOut) ? m_settings.longTimeOutS() : m_settings.timeOutS();
+    const int timeOutS = (flags & LongTimeOut) ? settings().longTimeOutS() : settings().timeOutS();
     process.setTimeoutS(timeOutS);
     if (outputCodec)
         process.setCodec(outputCodec);
@@ -1249,7 +1245,7 @@ PerforceResponse PerforcePluginPrivate::synchronousProcess(const FilePath &worki
             process.setStdOutCallback([](const QString &lines) { VcsOutputWindow::append(lines); });
     }
     process.setTimeOutMessageBoxEnabled(true);
-    process.setCommand({m_settings.p4BinaryPath(), args});
+    process.setCommand({settings().p4BinaryPath(), args});
     process.runBlocking(EventLoopMode::On);
 
     PerforceResponse response;
@@ -1269,7 +1265,7 @@ PerforceResponse PerforcePluginPrivate::synchronousProcess(const FilePath &worki
         response.message = msgCrash();
         break;
     case ProcessResult::StartFailed:
-        response.message = msgNotStarted(m_settings.p4BinaryPath());
+        response.message = msgNotStarted(settings().p4BinaryPath());
         break;
     case ProcessResult::Hang:
         response.message = msgCrash();
@@ -1293,19 +1289,19 @@ PerforceResponse PerforcePluginPrivate::fullySynchronousProcess(const FilePath &
         process.setWorkingDirectory(workingDir);
 
     PerforceResponse response;
-    process.setCommand({m_settings.p4BinaryPath(), args});
+    process.setCommand({settings().p4BinaryPath(), args});
     process.setWriteData(stdInput);
     process.start();
 
     if (!process.waitForStarted(3000)) {
         response.error = true;
-        response.message = msgNotStarted(m_settings.p4BinaryPath());
+        response.message = msgNotStarted(settings().p4BinaryPath());
         return response;
     }
 
     QByteArray stdOut;
     QByteArray stdErr;
-    const int timeOutS = (flags & LongTimeOut) ? m_settings.longTimeOutS() : m_settings.timeOutS();
+    const int timeOutS = (flags & LongTimeOut) ? settings().longTimeOutS() : settings().timeOutS();
     if (!process.readDataFromProcess(&stdOut, &stdErr, timeOutS)) {
         process.stop();
         process.waitForFinished();
@@ -1341,14 +1337,14 @@ PerforceResponse PerforcePluginPrivate::runP4Cmd(const FilePath &workingDir,
                                                  const QByteArray &stdInput,
                                                  QTextCodec *outputCodec) const
 {
-    if (!m_settings.isValid()) {
+    if (!settings().isValid()) {
         PerforceResponse invalidConfigResponse;
         invalidConfigResponse.error = true;
         invalidConfigResponse.message = Tr::tr("Perforce is not correctly configured.");
         VcsOutputWindow::appendError(invalidConfigResponse.message);
         return invalidConfigResponse;
     }
-    QStringList actualArgs = m_settings.commonP4Arguments(workingDir.toString());
+    QStringList actualArgs = settings().commonP4Arguments(workingDir.toString());
     QString errorMessage;
     QSharedPointer<TempFileSaver> tempFile = createTemporaryArgumentFile(extraArgs, &errorMessage);
     if (!tempFile.isNull()) {
@@ -1362,7 +1358,7 @@ PerforceResponse PerforcePluginPrivate::runP4Cmd(const FilePath &workingDir,
     actualArgs.append(args);
 
     if (flags & CommandToWindow)
-        VcsOutputWindow::appendCommand(workingDir, {m_settings.p4BinaryPath(), actualArgs});
+        VcsOutputWindow::appendCommand(workingDir, {settings().p4BinaryPath(), actualArgs});
 
     if (flags & ShowBusyCursor)
         QGuiApplication::setOverrideCursor(QCursor(Qt::WaitCursor));
@@ -1410,7 +1406,7 @@ IEditor *PerforcePluginPrivate::showOutputInEditor(const QString &title,
 
 void PerforcePluginPrivate::slotSubmitDiff(const QStringList &files)
 {
-    p4Diff(m_settings.topLevel(), files);
+    p4Diff(settings().topLevel(), files);
 }
 
 // Parameter widget controlling whitespace diff mode, associated with a parameter
@@ -1525,7 +1521,7 @@ void PerforcePluginPrivate::vcsDescribe(const FilePath &source, const QString &n
                                          : VcsBaseEditor::getCodec(source);
     QStringList args;
     args << QLatin1String("describe") << QLatin1String("-du") << n;
-    const PerforceResponse result = runP4Cmd(m_settings.topLevel(), args, CommandToWindow|StdErrToWindow|ErrorToWindow,
+    const PerforceResponse result = runP4Cmd(settings().topLevel(), args, CommandToWindow|StdErrToWindow|ErrorToWindow,
                                              {}, {}, codec);
     if (!result.error)
         showOutputInEditor(Tr::tr("p4 describe %1").arg(n), result.stdOut, diffEditorParameters.id, source, codec);
@@ -1565,7 +1561,7 @@ bool PerforcePluginPrivate::activateCommit()
 
     QStringList submitArgs;
     submitArgs << QLatin1String("submit") << QLatin1String("-i");
-    const PerforceResponse submitResponse = runP4Cmd(m_settings.topLevelSymLinkTarget(), submitArgs,
+    const PerforceResponse submitResponse = runP4Cmd(settings().topLevelSymLinkTarget(), submitArgs,
                                                      LongTimeOut|RunFullySynchronous|CommandToWindow|StdErrToWindow|ErrorToWindow|ShowBusyCursor,
                                                      {}, reader.data());
     if (submitResponse.error) {
@@ -1582,11 +1578,11 @@ bool PerforcePluginPrivate::activateCommit()
 
 QString PerforcePluginPrivate::clientFilePath(const QString &serverFilePath)
 {
-    QTC_ASSERT(m_settings.isValid(), return QString());
+    QTC_ASSERT(settings().isValid(), return QString());
 
     QStringList args;
     args << QLatin1String("fstat") << serverFilePath;
-    const PerforceResponse response = runP4Cmd(m_settings.topLevelSymLinkTarget(), args,
+    const PerforceResponse response = runP4Cmd(settings().topLevelSymLinkTarget(), args,
                                                ShowBusyCursor|RunFullySynchronous|CommandToWindow|StdErrToWindow|ErrorToWindow);
     if (response.error)
         return {};
@@ -1598,10 +1594,10 @@ QString PerforcePluginPrivate::clientFilePath(const QString &serverFilePath)
 
 QString PerforcePluginPrivate::pendingChangesData()
 {
-    QTC_ASSERT(m_settings.isValid(), return QString());
+    QTC_ASSERT(settings().isValid(), return QString());
 
     QStringList args = QStringList(QLatin1String("info"));
-    const PerforceResponse userResponse = runP4Cmd(m_settings.topLevelSymLinkTarget(), args,
+    const PerforceResponse userResponse = runP4Cmd(settings().topLevelSymLinkTarget(), args,
                                                RunFullySynchronous|CommandToWindow|StdErrToWindow|ErrorToWindow);
     if (userResponse.error)
         return {};
@@ -1614,7 +1610,7 @@ QString PerforcePluginPrivate::pendingChangesData()
         return {};
     args.clear();
     args << QLatin1String("changes") << QLatin1String("-s") << QLatin1String("pending") << QLatin1String("-u") << user;
-    const PerforceResponse dataResponse = runP4Cmd(m_settings.topLevelSymLinkTarget(), args,
+    const PerforceResponse dataResponse = runP4Cmd(settings().topLevelSymLinkTarget(), args,
                                                    RunFullySynchronous|CommandToWindow|StdErrToWindow|ErrorToWindow);
     return dataResponse.error ? QString() : dataResponse.stdOut;
 }
@@ -1641,7 +1637,7 @@ QString PerforcePlugin::fileNameFromPerforceName(const QString& perforceName,
     unsigned flags = RunFullySynchronous;
     if (!quiet)
         flags |= CommandToWindow|StdErrToWindow|ErrorToWindow;
-    const PerforceResponse response = dd->runP4Cmd(dd->m_settings.topLevelSymLinkTarget(), args, flags);
+    const PerforceResponse response = dd->runP4Cmd(settings().topLevelSymLinkTarget(), args, flags);
     if (response.error) {
         *errorMessage = msgWhereFailed(perforceName, response.message);
         return {};
@@ -1659,26 +1655,18 @@ QString PerforcePlugin::fileNameFromPerforceName(const QString& perforceName,
         return {};
     }
     const QString p4fileSpec = output.mid(output.lastIndexOf(QLatin1Char(' ')) + 1);
-    return dd->m_settings.mapToFileSystem(p4fileSpec);
+    return settings().mapToFileSystem(p4fileSpec);
 }
 
 void PerforcePluginPrivate::setTopLevel(const FilePath &topLevel)
 {
-    if (m_settings.topLevel() == topLevel)
+    if (settings().topLevel() == topLevel)
         return;
 
-    m_settings.setTopLevel(topLevel.toString());
+    settings().setTopLevel(topLevel.toString());
 
     const QString msg = Tr::tr("Perforce repository: %1").arg(topLevel.toUserOutput());
     VcsOutputWindow::appendSilently(msg);
-}
-
-void PerforcePluginPrivate::applySettings()
-{
-    m_settings.writeSettings();
-    m_managedDirectoryCache.clear();
-    getTopLevel();
-    emit configurationChanged();
 }
 
 void PerforcePluginPrivate::slotTopLevelFailed(const QString &errorMessage)
@@ -1689,7 +1677,7 @@ void PerforcePluginPrivate::slotTopLevelFailed(const QString &errorMessage)
 void PerforcePluginPrivate::getTopLevel(const FilePath &workingDirectory, bool isSync)
 {
     // Run a new checker
-    if (m_settings.p4BinaryPath().isEmpty())
+    if (settings().p4BinaryPath().isEmpty())
         return;
     auto checker = new PerforceChecker(dd);
     connect(checker, &PerforceChecker::failed, dd, &PerforcePluginPrivate::slotTopLevelFailed);
@@ -1697,8 +1685,8 @@ void PerforcePluginPrivate::getTopLevel(const FilePath &workingDirectory, bool i
     connect(checker, &PerforceChecker::succeeded, dd, &PerforcePluginPrivate::setTopLevel);
     connect(checker, &PerforceChecker::succeeded,checker, &QObject::deleteLater);
 
-    checker->start(m_settings.p4BinaryPath(), workingDirectory,
-                   m_settings.commonP4Arguments(QString()), 30000);
+    checker->start(settings().p4BinaryPath(), workingDirectory,
+                   settings().commonP4Arguments(QString()), 30000);
 
     if (isSync)
         checker->waitForFinished();

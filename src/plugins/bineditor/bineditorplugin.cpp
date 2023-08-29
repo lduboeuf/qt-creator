@@ -40,7 +40,7 @@ using namespace Core;
 
 namespace BinEditor::Internal {
 
-class BinEditorFactory final : public IEditorFactory
+class BinEditorFactory final : public QObject, public IEditorFactory
 {
 public:
     BinEditorFactory();
@@ -313,9 +313,8 @@ protected:
     bool saveImpl(QString *errorString, const Utils::FilePath &filePath, bool autoSave) override
     {
         QTC_ASSERT(!autoSave, return true); // bineditor does not support autosave - it would be a bit expensive
-        const FilePath &fileNameToUse = filePath.isEmpty() ? this->filePath() : filePath;
-        if (m_widget->save(errorString, this->filePath(), fileNameToUse)) {
-            setFilePath(fileNameToUse);
+        if (m_widget->save(errorString, this->filePath(), filePath)) {
+            setFilePath(filePath);
             return true;
         }
         return false;

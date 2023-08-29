@@ -210,7 +210,7 @@ void CppEditorDocument::reparseWithPreferredParseContext(const QString &parseCon
     setPreferredParseContext(parseContextId);
 
     // Remember the setting
-    const QString key = Constants::PREFERRED_PARSE_CONTEXT + filePath().toString();
+    const Key key = Constants::PREFERRED_PARSE_CONTEXT + keyFromString(filePath().toString());
     Core::SessionManager::setValue(key, parseContextId);
 
     // Reprocess
@@ -277,7 +277,7 @@ void CppEditorDocument::applyPreferredParseContextFromSettings()
     if (filePath().isEmpty())
         return;
 
-    const QString key = Constants::PREFERRED_PARSE_CONTEXT + filePath().toString();
+    const Key key = Constants::PREFERRED_PARSE_CONTEXT + keyFromString(filePath().toString());
     const QString parseContextId = Core::SessionManager::value(key).toString();
 
     setPreferredParseContext(parseContextId);
@@ -288,7 +288,7 @@ void CppEditorDocument::applyExtraPreprocessorDirectivesFromSettings()
     if (filePath().isEmpty())
         return;
 
-    const QString key = Constants::EXTRA_PREPROCESSOR_DIRECTIVES + filePath().toString();
+    const Key key = Constants::EXTRA_PREPROCESSOR_DIRECTIVES + keyFromString(filePath().toString());
     const QByteArray directives = Core::SessionManager::value(key).toString().toUtf8();
 
     setExtraPreprocessorDirectives(directives);
@@ -388,8 +388,7 @@ BaseEditorDocumentProcessor *CppEditorDocument::processor()
 {
     if (!m_processor) {
         m_processor.reset(CppModelManager::createEditorDocumentProcessor(this));
-        connect(m_processor.data(),
-                &BaseEditorDocumentProcessor::projectPartInfoUpdated,
+        connect(m_processor.data(), &BaseEditorDocumentProcessor::projectPartInfoUpdated, this,
                 [this](const ProjectPartInfo &info) {
                     const bool hasProjectPart = !(info.hints & ProjectPartInfo::IsFallbackMatch);
                     minimizableInfoBars()->setInfoVisible(NO_PROJECT_CONFIGURATION, !hasProjectPart);
@@ -398,15 +397,15 @@ BaseEditorDocumentProcessor *CppEditorDocument::processor()
                     const bool isProjectFile = info.hints & ProjectPartInfo::IsFromProjectMatch;
                     showHideInfoBarAboutMultipleParseContexts(isAmbiguous && isProjectFile);
                 });
-        connect(m_processor.data(), &BaseEditorDocumentProcessor::codeWarningsUpdated,
-                [this] (unsigned revision,
-                        const QList<QTextEdit::ExtraSelection> selections,
-                        const TextEditor::RefactorMarkers &refactorMarkers) {
+        connect(m_processor.data(), &BaseEditorDocumentProcessor::codeWarningsUpdated, this,
+                [this](unsigned revision,
+                       const QList<QTextEdit::ExtraSelection> selections,
+                       const TextEditor::RefactorMarkers &refactorMarkers) {
             emit codeWarningsUpdated(revision, selections, refactorMarkers);
         });
         connect(m_processor.data(), &BaseEditorDocumentProcessor::ifdefedOutBlocksUpdated,
                 this, &CppEditorDocument::ifdefedOutBlocksUpdated);
-        connect(m_processor.data(), &BaseEditorDocumentProcessor::cppDocumentUpdated,
+        connect(m_processor.data(), &BaseEditorDocumentProcessor::cppDocumentUpdated, this,
                 [this](const CPlusPlus::Document::Ptr document) {
                     // Update syntax highlighter
                     auto *highlighter = qobject_cast<CppHighlighter *>(syntaxHighlighter());

@@ -43,8 +43,8 @@ public:
     };
 
     void addToLayout(Layouting::LayoutItem &parent) final;
-    void toMap(QVariantMap &map) const final;
-    void fromMap(const QVariantMap &map) final;
+    void toMap(Utils::Store &map) const final;
+    void fromMap(const Utils::Store &map) final;
 
     void updateFileComboBox();
     MainScriptSource mainScriptSource() const;

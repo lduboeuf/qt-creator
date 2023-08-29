@@ -43,8 +43,8 @@ public:
     };
 
 private:
-    void fromMap(const QVariantMap &map) override;
-    void toMap(QVariantMap &map) const override;
+    void fromMap(const Utils::Store &map) override;
+    void toMap(Utils::Store &map) const override;
 
     void calculateUseTerminal();
 
@@ -73,8 +73,8 @@ public:
     void setEnvironment(EnvironmentAspect *envAspect);
 
 private:
-    void fromMap(const QVariantMap &map) override;
-    void toMap(QVariantMap &map) const override;
+    void fromMap(const Utils::Store &map) override;
+    void toMap(Utils::Store &map) const override;
 
     void resetPath();
 
@@ -111,8 +111,8 @@ public:
     };
 
 private:
-    void fromMap(const QVariantMap &map) override;
-    void toMap(QVariantMap &map) const override;
+    void fromMap(const Utils::Store &map) override;
+    void toMap(Utils::Store &map) const override;
 
     QWidget *setupChooser();
 
@@ -167,12 +167,12 @@ public:
     void setExecutable(const Utils::FilePath &executable);
 
     void setDeviceSelector(Target *target, ExecutionDeviceSelector selector);
-    void setSettingsKey(const QString &key);
-    void makeOverridable(const QString &overridingKey, const QString &useOverridableKey);
+    void setSettingsKey(const Utils::Key &key);
+    void makeOverridable(const Utils::Key &overridingKey, const Utils::Key &useOverridableKey);
     void addToLayout(Layouting::LayoutItem &parent) override;
     void setLabelText(const QString &labelText);
     void setPlaceHolderText(const QString &placeHolderText);
-    void setHistoryCompleter(const QString &historyCompleterKey);
+    void setHistoryCompleter(const Utils::Key &historyCompleterKey);
     void setExpectedKind(const Utils::PathChooser::Kind expectedKind);
     void setEnvironment(const Utils::Environment &env);
     void setReadOnly(bool readOnly);
@@ -183,8 +183,8 @@ public:
     };
 
 protected:
-    void fromMap(const QVariantMap &map) override;
-    void toMap(QVariantMap &map) const override;
+    void fromMap(const Utils::Store &map) override;
+    void toMap(Utils::Store &map) const override;
 
 private:
     QString executableText() const;
@@ -238,13 +238,14 @@ public:
     void setCurrentInterpreter(const Interpreter &interpreter);
     void setSettingsDialogId(Utils::Id id) { m_settingsDialogId = id; }
 
-    void fromMap(const QVariantMap &) override;
-    void toMap(QVariantMap &) const override;
+    void fromMap(const Utils::Store &) override;
+    void toMap(Utils::Store &) const override;
     void addToLayout(Layouting::LayoutItem &parent) override;
 
     struct Data : Utils::BaseAspect::Data { Interpreter interpreter; };
 
 private:
+    void setCurrentInterpreterId(const QString &id);
     void updateCurrentInterpreter();
     void updateComboBox();
     QList<Interpreter> m_interpreters;

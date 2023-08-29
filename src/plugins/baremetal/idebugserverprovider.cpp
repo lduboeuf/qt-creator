@@ -18,6 +18,7 @@
 
 using namespace Debugger;
 using namespace ProjectExplorer;
+using namespace Utils;
 
 namespace BareMetal::Internal {
 
@@ -137,7 +138,7 @@ IDebugServerProviderConfigWidget *IDebugServerProvider::configurationWidget() co
     return m_configurationWidgetCreator();
 }
 
-void IDebugServerProvider::toMap(QVariantMap &data) const
+void IDebugServerProvider::toMap(Store &data) const
 {
     data.insert(idKeyC, m_id);
     data.insert(displayNameKeyC, m_displayName);
@@ -166,7 +167,7 @@ void IDebugServerProvider::resetId()
     m_id = createId(m_id);
 }
 
-void IDebugServerProvider::fromMap(const QVariantMap &data)
+void IDebugServerProvider::fromMap(const Store &data)
 {
     m_id = data.value(idKeyC).toString();
     m_displayName = data.value(displayNameKeyC).toString();
@@ -205,14 +206,14 @@ IDebugServerProvider *IDebugServerProviderFactory::create() const
     return m_creator();
 }
 
-IDebugServerProvider *IDebugServerProviderFactory::restore(const QVariantMap &data) const
+IDebugServerProvider *IDebugServerProviderFactory::restore(const Store &data) const
 {
     IDebugServerProvider *p = m_creator();
     p->fromMap(data);
     return p;
 }
 
-bool IDebugServerProviderFactory::canRestore(const QVariantMap &data) const
+bool IDebugServerProviderFactory::canRestore(const Store &data) const
 {
     const QString id = idFromMap(data);
     return id.startsWith(m_id + ':');
@@ -228,12 +229,12 @@ void IDebugServerProviderFactory::setCreator(const std::function<IDebugServerPro
     m_creator = creator;
 }
 
-QString IDebugServerProviderFactory::idFromMap(const QVariantMap &data)
+QString IDebugServerProviderFactory::idFromMap(const Store &data)
 {
     return data.value(idKeyC).toString();
 }
 
-void IDebugServerProviderFactory::idToMap(QVariantMap &data, const QString &id)
+void IDebugServerProviderFactory::idToMap(Store &data, const QString &id)
 {
     data.insert(idKeyC, id);
 }

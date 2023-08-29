@@ -5,6 +5,8 @@
 
 #include "texteditor_global.h"
 
+#include <utils/store.h>
+
 #include <QObject>
 
 QT_BEGIN_NAMESPACE
@@ -62,13 +64,13 @@ public:
     QByteArray currentDelegateId() const;
     void setCurrentDelegate(const QByteArray &id);
 
-    void setSettingsSuffix(const QString &suffix);
-    void toSettings(const QString &category) const;
-    void fromSettings(const QString &category);
+    void setSettingsSuffix(const Utils::Key &suffix);
+    void toSettings(const Utils::Key &category) const;
+    void fromSettings(const Utils::Key &category);
 
     // make below 2 protected?
-    virtual QVariantMap toMap() const;
-    virtual void fromMap(const QVariantMap &map);
+    virtual Utils::Store toMap() const;
+    virtual void fromMap(const Utils::Store &map);
 
 signals:
     void tabSettingsChanged(const TextEditor::TabSettings &settings);

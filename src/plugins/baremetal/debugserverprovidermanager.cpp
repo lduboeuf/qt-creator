@@ -90,16 +90,16 @@ void DebugServerProviderManager::restoreProviders()
 
     const int count = data.value(countKeyC, 0).toInt();
     for (int i = 0; i < count; ++i) {
-        const Key key = dataKeyC + Key::number(i);
+        const Key key = numberedKey(dataKeyC, i);
         if (!data.contains(key))
             break;
 
         Store map = storeFromVariant(data.value(key));
         const KeyList keys = map.keys();
         for (const Key &key : keys) {
-            const int lastDot = key.lastIndexOf('.');
+            const int lastDot = key.view().lastIndexOf('.');
             if (lastDot != -1)
-                map[key.mid(lastDot + 1)] = map[key];
+                map[key.toByteArray().mid(lastDot + 1)] = map[key];
         }
         bool restored = false;
         for (IDebugServerProviderFactory *f : std::as_const(m_factories)) {
@@ -132,8 +132,8 @@ void DebugServerProviderManager::saveProviders()
             p->toMap(tmp);
             if (tmp.isEmpty())
                 continue;
-            const Key key = dataKeyC + Key::number(count);
-            data.insert(key, QVariant::fromValue(tmp));
+            const Key key = numberedKey(dataKeyC, count);
+            data.insert(key, variantFromStore(tmp));
             ++count;
         }
     }

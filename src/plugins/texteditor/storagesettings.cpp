@@ -6,7 +6,6 @@
 #include <coreplugin/icore.h>
 
 #include <utils/hostosinfo.h>
-#include <utils/settingsutils.h>
 
 #include <QRegularExpression>
 
@@ -20,7 +19,6 @@ static const char addFinalNewLineKey[] = "addFinalNewLine";
 static const char cleanIndentationKey[] = "cleanIndentation";
 static const char skipTrailingWhitespaceKey[] = "skipTrailingWhitespace";
 static const char ignoreFileTypesKey[] = "ignoreFileTypes";
-static const char groupPostfix[] = "StorageSettings";
 static const char defaultTrailingWhitespaceBlacklist[] = "*.md, *.MD, Makefile";
 
 StorageSettings::StorageSettings()
@@ -31,17 +29,6 @@ StorageSettings::StorageSettings()
       m_cleanIndentation(true),
       m_skipTrailingWhitespace(true)
 {
-}
-
-void StorageSettings::toSettings(const Key &category) const
-{
-    Utils::toSettings(groupPostfix, category, Core::ICore::settings(), this);
-}
-
-void StorageSettings::fromSettings(const Key &category)
-{
-    *this = StorageSettings();
-    Utils::fromSettings(groupPostfix, category, Core::ICore::settings(), this);
 }
 
 Store StorageSettings::toMap() const

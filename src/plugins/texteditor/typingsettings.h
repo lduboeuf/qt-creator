@@ -31,12 +31,15 @@ public:
         BackspaceUnindents = 2
     };
 
+    enum CommentPosition {
+        Automatic = 0,
+        StartOfLine = 1,
+        AfterWhitespace = 2,
+    };
+
     TypingSettings();
 
     bool tabShouldIndent(const QTextDocument *document, const QTextCursor &cursor, int *suggestedPosition) const;
-
-    void toSettings(const Utils::Key &category) const;
-    void fromSettings(const Utils::Key &category);
 
     Utils::Store toMap() const;
     void fromMap(const Utils::Store &map);
@@ -51,6 +54,7 @@ public:
     SmartBackspaceBehavior m_smartBackspaceBehavior;
 
     bool m_preferSingleLineComments;
+    CommentPosition m_commentPosition = Automatic;
 };
 
 } // namespace TextEditor

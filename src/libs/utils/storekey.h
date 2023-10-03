@@ -5,27 +5,59 @@
 
 #include "utils_global.h"
 
+#include <QByteArrayView>
 #include <QString>
+#include <QHashFunctions>
 
 namespace Utils {
 
-// Opt-in to new classes during the transition phase.
-// #define QTC_USE_STORE
+class QTCREATOR_UTILS_EXPORT Key
+{
+public:
+    Key() = default;
+    Key(const QByteArray &key) : data(key) {}
 
-#ifdef QTC_USE_STORE
+    template <int N>
+    Key(const char (&key)[N]) : data(key) {}
 
-using Key = QByteArray;
+    // FIXME:
+    // The following is wanted, but not used yet due to unclear ASAN report.
+    // template <int N>
+    // Key(const char (&key)[N]) : Key(key, strlen(key)) {}
 
-inline Key keyFromString(const QString &str) { return str.toUtf8(); }
-inline QString stringFromKey(const Key &key) { return QString::fromUtf8(key); }
+    Key(const char *key, size_t n);
 
-#else
+    Key(const Key &base, int number);
+    ~Key();
 
-using Key = QString;
+    const QByteArrayView view() const;
+    const QByteArray &toByteArray() const;
+    QByteArrayView operator()() const { return data; }
 
-inline Key keyFromString(const QString &str) { return str; }
-inline QString stringFromKey(const Key &key) { return key; }
+    bool isEmpty() const { return data.isEmpty(); }
+    void clear() { data.clear(); }
 
-#endif
+    friend bool operator<(const Key &a, const Key &b) { return a.data < b.data; }
+    friend bool operator==(const Key &a, const Key &b) { return a.data == b.data; }
+
+    friend Key operator+(const Key &a, const Key &b)
+    {
+        return Key(a.data + b.data);
+    }
+    friend Key operator+(const Key &a, char b)
+    {
+        return Key(a.data + b);
+    }
+    friend size_t qHash(const Key &key, size_t seed = 0)
+    {
+        return qHash(key.data, seed);
+    }
+
+private:
+    QByteArray data;
+};
+
+QTCREATOR_UTILS_EXPORT Key keyFromString(const QString &str);
+QTCREATOR_UTILS_EXPORT QString stringFromKey(const Key &key);
 
 } // Utils

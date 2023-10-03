@@ -65,7 +65,6 @@
 #include <QCheckBox>
 #include <QDialog>
 #include <QDialogButtonBox>
-#include <QDir>
 #include <QGridLayout>
 #include <QHeaderView>
 #include <QLoggingCategory>
@@ -247,7 +246,6 @@ CMakeBuildSettingsWidget::CMakeBuildSettingsWidget(CMakeBuildConfiguration *bc) 
 
     m_configView->setModel(m_configTextFilterModel);
     m_configView->setMinimumHeight(300);
-    m_configView->setUniformRowHeights(true);
     m_configView->setSortingEnabled(true);
     m_configView->sortByColumn(0, Qt::AscendingOrder);
     m_configView->header()->setSectionResizeMode(QHeaderView::Stretch);
@@ -1352,7 +1350,10 @@ CMakeBuildConfiguration::CMakeBuildConfiguration(Target *target, Id id)
             if (oldDir.isEmpty())
                 return newDir;
 
-            if (QDir(oldDir).exists("CMakeCache.txt") && !QDir(newDir).exists("CMakeCache.txt")) {
+            const FilePath oldDirCMakeCache = FilePath::fromUserInput(oldDir).pathAppended("CMakeCache.txt");
+            const FilePath newDirCMakeCache = FilePath::fromUserInput(newDir).pathAppended("CMakeCache.txt");
+
+            if (oldDirCMakeCache.exists() && !newDirCMakeCache.exists()) {
                 if (QMessageBox::information(
                         Core::ICore::dialogParent(),
                         Tr::tr("Changing Build Directory"),
@@ -2100,21 +2101,8 @@ void InitialCMakeArgumentsAspect::setAllValues(const QString &values, QStringLis
     QStringList arguments = values.split('\n', Qt::SkipEmptyParts);
     QString cmakeGenerator;
     for (QString &arg: arguments) {
-        if (arg.startsWith("-G")) {
-            const QString strDash(" - ");
-            const int idxDash = arg.indexOf(strDash);
-            if (idxDash > 0) {
-                // -GCodeBlocks - Ninja
-                cmakeGenerator = "-DCMAKE_GENERATOR:STRING=" + arg.mid(idxDash + strDash.length());
-
-                arg = arg.left(idxDash);
-                arg.replace("-G", "-DCMAKE_EXTRA_GENERATOR:STRING=");
-
-            } else {
-                // -GNinja
-                arg.replace("-G", "-DCMAKE_GENERATOR:STRING=");
-            }
-        }
+        if (arg.startsWith("-G"))
+            arg.replace("-G", "-DCMAKE_GENERATOR:STRING=");
         if (arg.startsWith("-A"))
             arg.replace("-A", "-DCMAKE_GENERATOR_PLATFORM:STRING=");
         if (arg.startsWith("-T"))

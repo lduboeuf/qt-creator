@@ -75,7 +75,6 @@ QMakeStep::QMakeStep(BuildStepList *bsl, Id id)
     effectiveCall.setDisplayStyle(StringAspect::TextEditDisplay);
     effectiveCall.setLabelText(Tr::tr("Effective qmake call:"));
     effectiveCall.setReadOnly(true);
-    effectiveCall.setUndoRedoEnabled(false);
     effectiveCall.setEnabled(true);
 
     auto updateSummary = [this] {
@@ -471,7 +470,7 @@ QWidget *QMakeStep::createConfigWidget()
     connect(abisListWidget, &QListWidget::itemChanged, this, [this] {
         if (m_ignoreChanges.isLocked())
             return;
-        updateAbiWidgets();
+        abisChanged();
         if (QmakeBuildConfiguration *bc = qmakeBuildConfiguration())
             BuildManager::buildLists({bc->cleanSteps()});
     });

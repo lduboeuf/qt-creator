@@ -3,13 +3,6 @@
 
 #include "tst_testcore.h"
 
-#include <QScopedPointer>
-#include <QLatin1String>
-#include <QGraphicsObject>
-#include <QQueue>
-#include <QTest>
-#include <QVariant>
-
 #include <designersettings.h>
 #include <externaldependenciesinterface.h>
 #include <invalididexception.h>
@@ -23,7 +16,6 @@
 #include <rewritingexception.h>
 #include <stylesheetmerger.h>
 #include <subcomponentmanager.h>
-#include <QDebug>
 #include <qmlanchors.h>
 #include <qmlmodelnodefacade.h>
 
@@ -40,13 +32,21 @@
 
 #include <bytearraymodifier.h>
 #include "testrewriterview.h"
-#include <utils/fileutils.h>
 
 #include <qmljs/qmljsinterpreter.h>
 #include <qmljs/qmljssimplereader.h>
 #include <extensionsystem/pluginmanager.h>
 
+#include <utils/fileutils.h>
+#include <utils/qtcsettings.h>
+
+#include <QDebug>
+#include <QGraphicsObject>
 #include <QPlainTextEdit>
+#include <QQueue>
+#include <QScopedPointer>
+#include <QTest>
+#include <QVariant>
 
 //TESTED_COMPONENT=src/plugins/qmldesigner/designercore
 
@@ -146,8 +146,6 @@ public:
     QString defaultPuppetToplevelBuildDirectory() const override { return {}; }
     QString qmlPuppetFallbackDirectory() const override { return {}; }
     QUrl projectUrl() const override { return {}; }
-    QList<QColor> designerSettingsEdit3DViewBackgroundColor() const override { return {}; }
-    QColor designerSettingsEdit3DViewGridColor() const override { return {}; }
     void parseItemLibraryDescriptions() override {}
     const QmlDesigner::DesignerSettings &designerSettings() const override { return settings; }
     void undoOnCurrentDesignDocument() override {}
@@ -166,7 +164,7 @@ public:
     Utils::FilePath resourcePath(const QString &) const override { return {}; }
 
 public:
-    QSettings qsettings;
+    Utils::QtcSettings qsettings;
     QmlDesigner::DesignerSettings settings{&qsettings};
     Model *model;
 };
@@ -263,7 +261,8 @@ void tst_TestCore::initTestCase()
 
     QFileInfo builtins(IDE_DATA_PATH "/qml-type-descriptions/builtins.qmltypes");
     QStringList errors, warnings;
-    QmlJS::CppQmlTypesLoader::defaultQtObjects = QmlJS::CppQmlTypesLoader::loadQmlTypes(QFileInfoList{builtins}, &errors, &warnings);
+    QmlJS::CppQmlTypesLoader::defaultQtObjects()
+        = QmlJS::CppQmlTypesLoader::loadQmlTypes(QFileInfoList{builtins}, &errors, &warnings);
 }
 
 void tst_TestCore::cleanupTestCase()

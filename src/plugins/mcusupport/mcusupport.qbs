@@ -5,7 +5,7 @@ QtcPlugin {
 
     Depends { name: "Qt.core" }
     Depends { name: "Qt.widgets" }
-    Depends { name: "Qt.testlib"; condition: qtc.testsEnabled }
+    Depends { name: "Qt.testlib"; condition: qtc.withPluginTests }
     Depends { name: "Utils" }
 
     Depends { name: "Core" }
@@ -16,7 +16,7 @@ QtcPlugin {
     Depends { name: "QmlJS" }
     Depends { name: "QtSupport" }
 
-    Depends { name: "qtc_gtest_gmock"; condition: qtc.testsEnabled; required: false }
+    Depends { name: "qtc_gtest_gmock"; condition: qtc.withPluginTests; required: false }
 
     files: [
         "mcuabstractpackage.h",
@@ -60,10 +60,12 @@ QtcPlugin {
         "settingshandler.cpp",
         "dialogs/mcukitcreationdialog.h",
         "dialogs/mcukitcreationdialog.cpp",
+        "mcusupportimportprovider.h",
+        "mcusupportimportprovider.cpp",
     ]
 
     QtcTestFiles {
-        condition: qtc.testsEnabled && (qtc_gtest_gmock.hasRepo || qtc_gtest_gmock.externalLibsPresent)
+        condition: qtc.withPluginTests && (qtc_gtest_gmock.hasRepo || qtc_gtest_gmock.externalLibsPresent)
         prefix: "test/"
         files: [
             "packagemock.h",
@@ -73,7 +75,7 @@ QtcPlugin {
     }
 
     Properties {
-        condition: qtc.testsEnabled && (qtc_gtest_gmock.hasRepo || qtc_gtest_gmock.externalLibsPresent)
+        condition: qtc.withPluginTests && (qtc_gtest_gmock.hasRepo || qtc_gtest_gmock.externalLibsPresent)
         cpp.defines: base.concat(["GOOGLE_TEST_IS_FOUND"])
         cpp.includePaths: base.concat([ "." ])
     }

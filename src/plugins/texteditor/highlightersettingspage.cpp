@@ -16,7 +16,6 @@
 #include <QDir>
 #include <QLabel>
 #include <QLineEdit>
-#include <QMessageBox>
 #include <QPointer>
 #include <QPushButton>
 
@@ -52,7 +51,7 @@ public:
     }
 
     bool m_initialized = false;
-    const QString m_settingsPrefix{"Text"};
+    const Key m_settingsPrefix{"Text"};
 
     HighlighterSettings m_settings;
 

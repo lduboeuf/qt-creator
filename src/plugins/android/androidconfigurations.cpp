@@ -36,6 +36,7 @@
 #include <utils/persistentsettings.h>
 #include <utils/process.h>
 #include <utils/qtcassert.h>
+#include <utils/qtcsettings.h>
 #include <utils/stringutils.h>
 
 #include <QApplication>
@@ -110,14 +111,9 @@ const QLatin1String X86ToolsPrefix("i686-linux-android");
 const QLatin1String AArch64ToolsPrefix("aarch64-linux-android");
 const QLatin1String X86_64ToolsPrefix("x86_64-linux-android");
 
-const QLatin1String ArmToolsDisplayName("arm");
-const QLatin1String X86ToolsDisplayName("i686");
-const QLatin1String AArch64ToolsDisplayName("aarch64");
-const QLatin1String X86_64ToolsDisplayName("x86_64");
-
 const QLatin1String Unknown("unknown");
 const QLatin1String keytoolName("keytool");
-const QLatin1String changeTimeStamp("ChangeTimeStamp");
+const Key changeTimeStamp("ChangeTimeStamp");
 
 const char sdkToolsVersionKey[] = "Pkg.Revision";
 const char ndkRevisionKey[] = "Pkg.Revision";
@@ -174,18 +170,18 @@ QLatin1String AndroidConfig::displayName(const Abi &abi)
     switch (abi.architecture()) {
     case Abi::ArmArchitecture:
         if (abi.wordWidth() == 64)
-            return AArch64ToolsDisplayName;
-        return ArmToolsDisplayName;
+            return QLatin1String(Constants::AArch64ToolsDisplayName);
+        return QLatin1String(Constants::ArmToolsDisplayName);
     case Abi::X86Architecture:
         if (abi.wordWidth() == 64)
-            return X86_64ToolsDisplayName;
-        return X86ToolsDisplayName;
+            return QLatin1String(Constants::X86_64ToolsDisplayName);
+        return QLatin1String(Constants::X86ToolsDisplayName);
     default:
         return Unknown;
     }
 }
 
-void AndroidConfig::load(const QSettings &settings)
+void AndroidConfig::load(const QtcSettings &settings)
 {
     // user settings
     QVariant emulatorArgs = settings.value(EmulatorArgsKey, QString("-netdelay none -netspeed full"));
@@ -225,7 +221,7 @@ void AndroidConfig::load(const QSettings &settings)
     parseDependenciesJson();
 }
 
-void AndroidConfig::save(QSettings &settings) const
+void AndroidConfig::save(QtcSettings &settings) const
 {
     QFileInfo fileInfo(sdkSettingsFileName());
     if (fileInfo.exists())
@@ -1348,9 +1344,8 @@ void AndroidConfigurations::updateAutomaticKitList()
 
     // register new kits
     const Toolchains toolchains = ToolChainManager::toolchains([](const ToolChain *tc) {
-        return tc->isAutoDetected()
-            && tc->isValid()
-            && tc->typeId() == Constants::ANDROID_TOOLCHAIN_TYPEID;
+        return tc->isAutoDetected() && tc->typeId() == Constants::ANDROID_TOOLCHAIN_TYPEID
+               && tc->isValid();
     });
     QList<Kit *> unhandledKits = existingKits;
     for (ToolChain *tc : toolchains) {
@@ -1448,7 +1443,7 @@ AndroidConfigurations *AndroidConfigurations::instance()
 
 void AndroidConfigurations::save()
 {
-    QSettings *settings = Core::ICore::settings();
+    QtcSettings *settings = Core::ICore::settings();
     settings->beginGroup(SettingsGroup);
     m_config.save(*settings);
     settings->endGroup();
@@ -1547,7 +1542,7 @@ FilePath AndroidConfig::getJdkPath()
 
 void AndroidConfigurations::load()
 {
-    QSettings *settings = Core::ICore::settings();
+    QtcSettings *settings = Core::ICore::settings();
     settings->beginGroup(SettingsGroup);
     m_config.load(*settings);
     settings->endGroup();

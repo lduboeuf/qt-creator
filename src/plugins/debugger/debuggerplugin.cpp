@@ -112,7 +112,6 @@
 #include <QPointer>
 #include <QPushButton>
 #include <QScopeGuard>
-#include <QSettings>
 #include <QSortFilterProxyModel>
 #include <QStackedWidget>
 #include <QTextBlock>
@@ -1242,11 +1241,15 @@ void DebuggerPluginPrivate::createDapDebuggerPerspective(QWidget *globalLogWindo
 {
     EngineManager::registerDefaultPerspective(Tr::tr("CMake Preset"),
                                               "DAP",
-                                              ProjectExplorer::Constants::CMAKE_DEBUG_RUN_MODE);
+                                              Constants::DAP_PERSPECTIVE_ID);
 
     EngineManager::registerDefaultPerspective(Tr::tr("GDB Preset"),
                                               "DAP",
-                                              ProjectExplorer::Constants::DAP_GDB_DEBUG_RUN_MODE);
+                                              Constants::DAP_PERSPECTIVE_ID);
+
+    EngineManager::registerDefaultPerspective(Tr::tr("Python Preset"),
+                                              "DAP",
+                                              Constants::DAP_PERSPECTIVE_ID);
 
     auto breakpointManagerView = createBreakpointManagerView("DAPDebugger.BreakWindow");
     auto breakpointManagerWindow
@@ -1265,11 +1268,14 @@ void DebuggerPluginPrivate::createDapDebuggerPerspective(QWidget *globalLogWindo
     connect(&m_startDapAction, &QAction::triggered, this, [] {
         QComboBox *combo = qobject_cast<QComboBox *>(EngineManager::dapEngineChooser());
         if (combo->currentText() == "CMake Preset") {
-            ProjectExplorerPlugin::runStartupProject(ProjectExplorer::Constants::CMAKE_DEBUG_RUN_MODE,
-                                                     true);
+            ProjectExplorerPlugin::runStartupProject(
+                ProjectExplorer::Constants::DAP_CMAKE_DEBUG_RUN_MODE, false);
+        } else if (combo->currentText() == "GDB Preset") {
+            ProjectExplorerPlugin::runStartupProject(
+                ProjectExplorer::Constants::DAP_GDB_DEBUG_RUN_MODE, false);
         } else {
             ProjectExplorerPlugin::runStartupProject(
-                ProjectExplorer::Constants::DAP_GDB_DEBUG_RUN_MODE, true);
+                ProjectExplorer::Constants::DAP_PY_DEBUG_RUN_MODE, false);
         }
     });
 
@@ -1308,6 +1314,9 @@ static QString msgParameterMissing(const QString &a)
 static Kit *guessKitFromAbis(const Abis &abis)
 {
     Kit *kit = nullptr;
+
+    if (!KitManager::waitForLoaded())
+        return kit;
 
     // Try to find a kit via ABI.
     if (!abis.isEmpty()) {
@@ -1369,9 +1378,11 @@ bool DebuggerPluginPrivate::parseArgument(QStringList::const_iterator &it,
                         return false;
                     }
                 } else if (key == "kit") {
-                    kit = KitManager::kit(Id::fromString(val));
-                    if (!kit)
-                        kit = KitManager::kit(Utils::equal(&Kit::displayName, val));
+                    if (KitManager::waitForLoaded()) {
+                        kit = KitManager::kit(Id::fromString(val));
+                        if (!kit)
+                            kit = KitManager::kit(Utils::equal(&Kit::displayName, val));
+                    }
                 } else if (key == "server") {
                     startMode = AttachToRemoteServer;
                     remoteChannel = val;
@@ -1477,12 +1488,12 @@ void DebuggerPluginPrivate::parseCommandLineArguments()
         QTimer::singleShot(0, this, &DebuggerPluginPrivate::runScheduled);
 }
 
-static void setConfigValue(const QString &name, const QVariant &value)
+static void setConfigValue(const Key &name, const QVariant &value)
 {
     ICore::settings()->setValue("DebugMode/" + name, value);
 }
 
-static QVariant configValue(const QString &name)
+static QVariant configValue(const Key &name)
 {
     return ICore::settings()->value("DebugMode/" + name);
 }
@@ -1658,7 +1669,7 @@ void DebuggerPluginPrivate::reloadDebuggingHelpers()
 
 void DebuggerPluginPrivate::startRemoteCdbSession()
 {
-    const QString connectionKey = "CdbRemoteConnection";
+    const Key connectionKey = "CdbRemoteConnection";
     Kit *kit = findUniversalCdbKit();
     QTC_ASSERT(kit, return);
 
@@ -2350,7 +2361,7 @@ bool wantRunTool(ToolMode toolMode, const QString &toolName)
         if (Utils::CheckableMessageBox::question(ICore::dialogParent(),
                                                  title,
                                                  message,
-                                                 QString("AnalyzerCorrectModeWarning"))
+                                                 Key("AnalyzerCorrectModeWarning"))
             != QMessageBox::Yes)
                 return false;
     }

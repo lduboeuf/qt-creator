@@ -44,7 +44,7 @@ DesktopDevice::DesktopDevice()
 
     setupId(IDevice::AutoDetected, DESKTOP_DEVICE_ID);
     setType(DESKTOP_DEVICE_TYPE);
-    setDefaultDisplayName(Tr::tr("Local PC"));
+    settings()->displayName.setDefaultValue(Tr::tr("Local PC"));
     setDisplayType(Tr::tr("Desktop"));
 
     setDeviceState(IDevice::DeviceStateUnknown);
@@ -125,7 +125,7 @@ Environment DesktopDevice::systemEnvironment() const
 FilePath DesktopDevice::rootPath() const
 {
     if (id() == DESKTOP_DEVICE_ID)
-        return FilePath::fromParts({}, {}, QDir::rootPath());
+        return HostOsInfo::root();
     return IDevice::rootPath();
 }
 

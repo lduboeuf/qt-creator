@@ -7,6 +7,8 @@
 
 #include <coreplugin/dialogs/ioptionspage.h>
 
+#include <projectexplorer/projectsettingswidget.h>
+
 #include <QAbstractItemModel>
 #include <QCoreApplication>
 #include <QJsonObject>
@@ -133,7 +135,7 @@ class LANGUAGECLIENT_EXPORT LanguageClientSettings
 {
 public:
     static void init();
-    static QList<BaseSettings *> fromSettings(QSettings *settings);
+    static QList<BaseSettings *> fromSettings(Utils::QtcSettings *settings);
     static QList<BaseSettings *> pageSettings();
     static QList<BaseSettings *> changedSettings();
 
@@ -144,7 +146,7 @@ public:
     static void registerClientType(const ClientType &type);
     static void addSettings(BaseSettings *settings);
     static void enableSettings(const QString &id, bool enable = true);
-    static void toSettings(QSettings *settings, const QList<BaseSettings *> &languageClientSettings);
+    static void toSettings(Utils::QtcSettings *settings, const QList<BaseSettings *> &languageClientSettings);
 
     static bool outlineComboBoxIsSorted();
     static void setOutlineComboBoxSorted(bool sorted);
@@ -189,6 +191,30 @@ public:
 private:
     Utils::PathChooser *m_executable = nullptr;
     QLineEdit *m_arguments = nullptr;
+};
+
+class ProjectSettings
+{
+public:
+    explicit ProjectSettings(ProjectExplorer::Project *project);
+
+    QJsonValue workspaceConfiguration() const;
+
+    QByteArray json() const;
+    void setJson(const QByteArray &json);
+
+private:
+    ProjectExplorer::Project *m_project = nullptr;
+    QByteArray m_json;
+};
+
+class ProjectSettingsWidget : public ProjectExplorer::ProjectSettingsWidget
+{
+public:
+    explicit ProjectSettingsWidget(ProjectExplorer::Project *project);
+
+private:
+    ProjectSettings m_settings;
 };
 
 LANGUAGECLIENT_EXPORT TextEditor::BaseTextEditor *jsonEditor();

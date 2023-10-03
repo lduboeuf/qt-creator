@@ -283,7 +283,7 @@ static void setHighDpiEnvironmentVariable()
     if (Utils::HostOsInfo::isMacHost() || qEnvironmentVariableIsSet("QT_SCALE_FACTOR_ROUNDING_POLICY"))
         return;
 
-    std::unique_ptr<QSettings> settings(createUserSettings());
+    std::unique_ptr<Utils::QtcSettings> settings(createUserSettings());
 
     const bool defaultValue = Utils::HostOsInfo::isWindowsHost();
     const bool enableHighDpiScaling = settings->value("Core/EnableHighDpiScaling", defaultValue).toBool();
@@ -413,7 +413,7 @@ QStringList lastSessionArgument()
 // and src\tools\qml2puppet\qml2puppet\qmlpuppet.cpp -> QString crashReportsPath()
 QString crashReportsPath()
 {
-    std::unique_ptr<QSettings> settings(createUserSettings());
+    std::unique_ptr<Utils::QtcSettings> settings(createUserSettings());
     QFileInfo(settings->fileName()).path() + "/crashpad_reports";
     if (Utils::HostOsInfo::isMacHost())
         return QFileInfo(createUserSettings()->fileName()).path() + "/crashpad_reports";
@@ -614,6 +614,15 @@ int main(int argc, char **argv)
                                  QSettings::SystemScope,
                                  QLatin1String(Core::Constants::IDE_SETTINGSVARIANT_STR),
                                  QLatin1String(Core::Constants::IDE_CASED_ID));
+    // warn if -installsettings points to a place where no install settings are located
+    if (!options.installSettingsPath.isEmpty() && !QFileInfo::exists(installSettings->fileName())) {
+        displayError(QLatin1String("The install settings \"%1\" do not exist. The %2 option must "
+                                   "point to a path with existing settings, excluding the %3 part "
+                                   "of the path.")
+                         .arg(QDir::toNativeSeparators(installSettings->fileName()),
+                              INSTALL_SETTINGS_OPTION,
+                              Core::Constants::IDE_SETTINGSVARIANT_STR));
+    }
     Utils::TerminalCommand::setSettings(settings);
     setPixmapCacheLimit();
     loadFonts();
@@ -644,6 +653,7 @@ int main(int argc, char **argv)
     PluginManager::setPluginIID(QLatin1String("org.qt-project.Qt.QtCreatorPlugin"));
     PluginManager::setInstallSettings(installSettings);
     PluginManager::setSettings(settings);
+    PluginManager::startProfiling();
 
     Utils::BaseAspect::setQtcSettings(settings);
 
@@ -661,7 +671,7 @@ int main(int argc, char **argv)
     QTranslator translator;
     QTranslator qtTranslator;
     QStringList uiLanguages = QLocale::system().uiLanguages();
-    QString overrideLanguage = settings->value(QLatin1String("General/OverrideLanguage")).toString();
+    QString overrideLanguage = settings->value("General/OverrideLanguage").toString();
     if (!overrideLanguage.isEmpty())
         uiLanguages.prepend(overrideLanguage);
     if (!options.uiLanguage.isEmpty())

@@ -10,9 +10,7 @@
 #include <QByteArray>
 #include <QMutex>
 
-QT_BEGIN_NAMESPACE
-class QSettings;
-QT_END_NAMESPACE
+namespace Utils { class QtcSettings; }
 
 namespace QmlDesigner {
 
@@ -32,6 +30,14 @@ inline constexpr char SHOW_DEBUGVIEW[] = "ShowQtQuickDesignerDebugView";
 inline constexpr char ENABLE_DEBUGVIEW[] = "EnableQtQuickDesignerDebugView";
 inline constexpr char EDIT3DVIEW_BACKGROUND_COLOR[] = "Edit3DViewBackgroundColor";
 inline constexpr char EDIT3DVIEW_GRID_COLOR[] = "Edit3DViewGridLineColor";
+inline constexpr char EDIT3DVIEW_SNAP_ABSOLUTE[] = "Edit3DViewSnapAbsolute";
+inline constexpr char EDIT3DVIEW_SNAP_ENABLED[] = "Edit3DViewSnapEnabled";
+inline constexpr char EDIT3DVIEW_SNAP_POSITION[] = "Edit3DViewSnapPosition";
+inline constexpr char EDIT3DVIEW_SNAP_POSITION_INTERVAL[] = "Edit3DViewSnapPositionInterval";
+inline constexpr char EDIT3DVIEW_SNAP_ROTATION[] = "Edit3DViewSnapRotation";
+inline constexpr char EDIT3DVIEW_SNAP_ROTATION_INTERVAL[] = "Edit3DViewSnapRotationInterval";
+inline constexpr char EDIT3DVIEW_SNAP_SCALE[] = "Edit3DViewSnapScale";
+inline constexpr char EDIT3DVIEW_SNAP_SCALE_INTERVAL[] = "Edit3DViewSnapScaleInterval";
 inline constexpr char ALWAYS_SAVE_IN_CRUMBLEBAR[] = "AlwaysSaveInCrumbleBar";
 inline constexpr char USE_DEFAULT_PUPPET[] = "UseDefaultQml2Puppet";
 inline constexpr char PUPPET_TOPLEVEL_BUILD_DIRECTORY[] = "PuppetToplevelBuildDirectory";
@@ -66,21 +72,21 @@ inline constexpr char CONTENT_LIBRARY_NEW_FLAG_EXPIRATION_DAYS[] = "ContentLibra
 class QMLDESIGNERBASE_EXPORT DesignerSettings
 {
 public:
-    DesignerSettings(QSettings *settings);
+    DesignerSettings(Utils::QtcSettings *settings);
 
     void insert(const QByteArray &key, const QVariant &value);
     void insert(const QHash<QByteArray, QVariant> &settingsHash);
     QVariant value(const QByteArray &key, const QVariant &defaultValue = {}) const;
 
 private:
-    void fromSettings(QSettings *);
-    void toSettings(QSettings *) const;
+    void fromSettings(Utils::QtcSettings *);
+    void toSettings(Utils::QtcSettings *) const;
 
-    void restoreValue(QSettings *settings, const QByteArray &key,
+    void restoreValue(Utils::QtcSettings *settings, const QByteArray &key,
         const QVariant &defaultValue = QVariant());
-    void storeValue(QSettings *settings, const QByteArray &key, const QVariant &value) const;
+    void storeValue(Utils::QtcSettings *settings, const QByteArray &key, const QVariant &value) const;
 
-    QSettings *m_settings;
+    Utils::QtcSettings *m_settings;
     QHash<QByteArray, QVariant> m_cache;
     mutable QMutex m_mutex;
 };

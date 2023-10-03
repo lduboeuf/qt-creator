@@ -5,8 +5,6 @@
 
 #include <coreplugin/icore.h>
 
-#include <utils/settingsutils.h>
-
 #include <QTextCursor>
 #include <QTextDocument>
 
@@ -14,7 +12,7 @@ static const char autoIndentKey[] = "AutoIndent";
 static const char tabKeyBehaviorKey[] = "TabKeyBehavior";
 static const char smartBackspaceBehaviorKey[] = "SmartBackspaceBehavior";
 static const char preferSingleLineCommentsKey[] = "PreferSingleLineComments";
-static const char groupPostfix[] = "TypingSettings";
+static const char preferAfterWhitespaceCommentsKey[] = "PreferAfterWhitespaceComments";
 
 using namespace Utils;
 
@@ -28,24 +26,14 @@ TypingSettings::TypingSettings():
 {
 }
 
-void TypingSettings::toSettings(const Key &category) const
-{
-    Utils::toSettings(groupPostfix, category, Core::ICore::settings(), this);
-}
-
-void TypingSettings::fromSettings(const Key &category)
-{
-    *this = TypingSettings(); // Assign defaults
-    Utils::fromSettings(groupPostfix, category, Core::ICore::settings(), this);
-}
-
 Store TypingSettings::toMap() const
 {
     return {
         {autoIndentKey, m_autoIndent},
         {tabKeyBehaviorKey, m_tabKeyBehavior},
         {smartBackspaceBehaviorKey, m_smartBackspaceBehavior},
-        {preferSingleLineCommentsKey, m_preferSingleLineComments}
+        {preferSingleLineCommentsKey, m_preferSingleLineComments},
+        {preferAfterWhitespaceCommentsKey, m_commentPosition}
     };
 }
 
@@ -57,14 +45,19 @@ void TypingSettings::fromMap(const Store &map)
                 smartBackspaceBehaviorKey, m_smartBackspaceBehavior).toInt();
     m_preferSingleLineComments =
         map.value(preferSingleLineCommentsKey, m_preferSingleLineComments).toBool();
+    m_commentPosition = CommentPosition(
+        std::clamp(map.value(preferAfterWhitespaceCommentsKey, m_commentPosition).toInt(),
+                   int(Automatic),
+                   int(AfterWhitespace)));
 }
 
 bool TypingSettings::equals(const TypingSettings &ts) const
 {
     return m_autoIndent == ts.m_autoIndent
-        && m_tabKeyBehavior == ts.m_tabKeyBehavior
-        && m_smartBackspaceBehavior == ts.m_smartBackspaceBehavior
-        && m_preferSingleLineComments == ts.m_preferSingleLineComments;
+           && m_tabKeyBehavior == ts.m_tabKeyBehavior
+           && m_smartBackspaceBehavior == ts.m_smartBackspaceBehavior
+           && m_preferSingleLineComments == ts.m_preferSingleLineComments
+           && m_commentPosition == ts.m_commentPosition;
 }
 
 bool TypingSettings::tabShouldIndent(const QTextDocument *document,

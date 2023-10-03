@@ -7,14 +7,13 @@
 #include "editormanager_p.h"
 #include "documentmodel.h"
 #include "documentmodel_p.h"
+#include "../actionmanager/actionmanager.h"
+#include "../editormanager/ieditor.h"
+#include "../editortoolbar.h"
+#include "../findplaceholder.h"
+#include "../icore.h"
+#include "../minisplitter.h"
 
-#include <coreplugin/actionmanager/actionmanager.h>
-#include <coreplugin/editormanager/ieditor.h>
-#include <coreplugin/editortoolbar.h>
-#include <coreplugin/findplaceholder.h>
-#include <coreplugin/icore.h>
-#include <coreplugin/locator/locatorconstants.h>
-#include <coreplugin/minisplitter.h>
 #include <utils/algorithm.h>
 #include <utils/infobar.h>
 #include <utils/qtcassert.h>
@@ -114,7 +113,7 @@ EditorView::EditorView(SplitterOrView *parentSplitterOrView, QWidget *parent) :
     m_container->addWidget(empty);
     m_widgetEditorMap.insert(empty, nullptr);
 
-    /*const auto dropSupport = new DropSupport(this, [this](QDropEvent *event, DropSupport *) {
+    const auto dropSupport = new DropSupport(this, [this](QDropEvent *event, DropSupport *) {
         // do not accept move events except from other editor views (i.e. their tool bars)
         // otherwise e.g. item views that support moving items within themselves would
         // also "move" the item into the editor view, i.e. the item would be removed from the
@@ -127,7 +126,7 @@ EditorView::EditorView(SplitterOrView *parentSplitterOrView, QWidget *parent) :
     });
     connect(dropSupport, &DropSupport::filesDropped,
             this, &EditorView::openDroppedFiles);
-*/
+
     updateNavigatorActions();
 }
 
@@ -957,7 +956,7 @@ void SplitterOrView::restoreState(const QByteArray &state)
             stream >> historyData;
         view()->m_editorHistory = loadHistory(historyData);
 
-        if (!QFile::exists(fileName))
+        if (!QFileInfo::exists(fileName))
             return;
         IEditor *e = EditorManagerPrivate::openEditor(view(), FilePath::fromString(fileName), Id::fromString(id),
                                                       EditorManager::IgnoreNavigationHistory

@@ -27,9 +27,9 @@
 #include <utils/qtcassert.h>
 
 #include <QDir>
-#include <QFileInfo>
-#include <QStringList>
 #include <QLoggingCategory>
+#include <QSet>
+#include <QStringList>
 
 #include <memory>
 
@@ -61,19 +61,18 @@ QmakeProjectImporter::QmakeProjectImporter(const FilePath &path) :
 
 FilePaths QmakeProjectImporter::importCandidates()
 {
-    FilePaths candidates;
+    FilePaths candidates{projectFilePath().absolutePath()};
 
-    const FilePath pfp = projectFilePath();
-    const QString prefix = pfp.baseName();
-    candidates << pfp.absolutePath();
-
+    QSet<FilePath> seenBaseDirs;
     for (Kit *k : KitManager::kits()) {
         const FilePath sbdir = QmakeBuildConfiguration::shadowBuildDirectory
                     (projectFilePath(), k, QString(), BuildConfiguration::Unknown);
 
         const FilePath baseDir = sbdir.absolutePath();
-        for (const FilePath &path : baseDir.dirEntries(QDir::Filters())) {
-            if (path.fileName().startsWith(prefix) && !candidates.contains(path))
+        if (!Utils::insert(seenBaseDirs, baseDir))
+            continue;
+        for (const FilePath &path : baseDir.dirEntries(QDir::Dirs | QDir::NoDotAndDotDot)) {
+            if (!candidates.contains(path))
                 candidates << path;
         }
     }

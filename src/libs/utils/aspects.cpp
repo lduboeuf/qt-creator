@@ -7,12 +7,15 @@
 #include "checkablemessagebox.h"
 #include "environment.h"
 #include "fancylineedit.h"
+#include "iconbutton.h"
 #include "layoutbuilder.h"
 #include "passworddialog.h"
 #include "pathchooser.h"
+#include "pathlisteditor.h"
 #include "qtcassert.h"
 #include "qtcolorbutton.h"
 #include "qtcsettings.h"
+#include "utilsicons.h"
 #include "utilstr.h"
 #include "variablechooser.h"
 
@@ -20,30 +23,35 @@
 #include <QButtonGroup>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QCompleter>
 #include <QDebug>
 #include <QGroupBox>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QPaintEvent>
+#include <QPainter>
 #include <QPointer>
 #include <QPushButton>
 #include <QRadioButton>
-#include <QSettings>
+#include <QScrollArea>
 #include <QSpinBox>
+#include <QStandardItemModel>
 #include <QTextEdit>
+#include <QUndoStack>
 
 using namespace Layouting;
 
 namespace Utils {
 
-static QSettings *theSettings = nullptr;
+static QtcSettings *theSettings = nullptr;
 
-void BaseAspect::setQtcSettings(QSettings *settings)
+void BaseAspect::setQtcSettings(QtcSettings *settings)
 {
     theSettings = settings;
 }
 
-QSettings *BaseAspect::qtcSettings()
+QtcSettings *BaseAspect::qtcSettings()
 {
     return theSettings;
 }
@@ -68,7 +76,6 @@ public:
     QString m_labelText;
     QPixmap m_labelPixmap;
     QIcon m_icon;
-    QPointer<QLabel> m_label; // Owned by configuration widget
     QPointer<QAction> m_action; // Owned by us.
     AspectContainer *m_container = nullptr; // Not owned by us.
 
@@ -84,6 +91,8 @@ public:
     BaseAspect::DataCreator m_dataCreator;
     BaseAspect::DataCloner m_dataCloner;
     QList<BaseAspect::DataExtractor> m_dataExtractors;
+
+    QUndoStack *m_undoStack = nullptr;
 };
 
 /*!
@@ -214,26 +223,33 @@ void BaseAspect::setVisible(bool visible)
     }
 }
 
-void BaseAspect::setupLabel()
+QLabel *BaseAspect::createLabel()
 {
-    QTC_ASSERT(!d->m_label, delete d->m_label);
     if (d->m_labelText.isEmpty() && d->m_labelPixmap.isNull())
-        return;
-    d->m_label = new QLabel(d->m_labelText);
-    d->m_label->setTextInteractionFlags(d->m_label->textInteractionFlags()
-                                        | Qt::TextSelectableByMouse);
-    connect(d->m_label, &QLabel::linkActivated, this, [this](const QString &link) {
+        return nullptr;
+
+    auto label = new QLabel(d->m_labelText);
+    label->setTextInteractionFlags(label->textInteractionFlags() | Qt::TextSelectableByMouse);
+    connect(label, &QLabel::linkActivated, this, [this](const QString &link) {
         emit labelLinkActivated(link);
     });
     if (!d->m_labelPixmap.isNull())
-        d->m_label->setPixmap(d->m_labelPixmap);
-    registerSubWidget(d->m_label);
+        label->setPixmap(d->m_labelPixmap);
+    registerSubWidget(label);
+
+    connect(this, &BaseAspect::labelTextChanged, label, [label, this] {
+        label->setText(d->m_labelText);
+    });
+    connect(this, &BaseAspect::labelPixmapChanged, label, [label, this] {
+        label->setPixmap(d->m_labelPixmap);
+    });
+
+    return label;
 }
 
 void BaseAspect::addLabeledItem(LayoutItem &parent, QWidget *widget)
 {
-    setupLabel();
-    if (QLabel *l = label()) {
+    if (QLabel *l = createLabel()) {
         l->setBuddy(widget);
         parent.addItem(l);
         parent.addItem(Span(std::max(d->m_spanX - 1, 1), LayoutItem(widget)));
@@ -249,8 +265,7 @@ void BaseAspect::addLabeledItem(LayoutItem &parent, QWidget *widget)
 void BaseAspect::setLabelText(const QString &labelText)
 {
     d->m_labelText = labelText;
-    if (d->m_label)
-        d->m_label->setText(labelText);
+    emit labelTextChanged();
 }
 
 /*!
@@ -260,8 +275,7 @@ void BaseAspect::setLabelText(const QString &labelText)
 void BaseAspect::setLabelPixmap(const QPixmap &labelPixmap)
 {
     d->m_labelPixmap = labelPixmap;
-    if (d->m_label)
-        d->m_label->setPixmap(labelPixmap);
+    emit labelPixmapChanged();
 }
 
 void BaseAspect::setIcon(const QIcon &icon)
@@ -280,11 +294,6 @@ QString BaseAspect::labelText() const
     return d->m_labelText;
 }
 
-QLabel *BaseAspect::label() const
-{
-    return d->m_label.data();
-}
-
 QString BaseAspect::toolTip() const
 {
     return d->m_tooltip;
@@ -300,6 +309,16 @@ void BaseAspect::setToolTip(const QString &tooltip)
         QTC_ASSERT(w, continue);
         w->setToolTip(tooltip);
     }
+}
+
+void BaseAspect::setUndoStack(QUndoStack *undoStack)
+{
+    d->m_undoStack = undoStack;
+}
+
+QUndoStack *BaseAspect::undoStack() const
+{
+    return d->m_undoStack;
 }
 
 bool BaseAspect::isEnabled() const
@@ -574,6 +593,12 @@ void BaseAspect::registerSubWidget(QWidget *widget)
         widget->setVisible(d->m_visible);
 }
 
+void BaseAspect::forEachSubWidget(const std::function<void(QWidget *)> &func)
+{
+    for (const QPointer<QWidget> &w : d->m_subWidgets)
+        func(w);
+}
+
 void BaseAspect::saveToMap(Store &data, const QVariant &value,
                            const QVariant &defaultValue, const Key &key)
 {
@@ -630,8 +655,7 @@ void BaseAspect::writeSettings() const
     if (settingsKey().isEmpty())
         return;
     QTC_ASSERT(theSettings, return);
-    QtcSettings::setValueWithDefault(theSettings,
-                                     settingsKey(),
+    theSettings->setValueWithDefault(settingsKey(),
                                      toSettingsValue(variantValue()),
                                      toSettingsValue(defaultVariantValue()));
 }
@@ -662,9 +686,7 @@ class BoolAspectPrivate
 {
 public:
     BoolAspect::LabelPlacement m_labelPlacement = BoolAspect::LabelPlacement::AtCheckBox;
-    QPointer<QAbstractButton> m_button; // Owned by configuration widget
-    QPointer<QGroupBox> m_groupBox; // For BoolAspects handling GroupBox check boxes
-    bool m_buttonIsAdopted = false;
+    UndoableValue<bool> m_undoable;
 };
 
 class ColorAspectPrivate
@@ -810,10 +832,6 @@ public:
     Qt::TextElideMode m_elideMode = Qt::ElideNone;
     QString m_placeHolderText;
     Key m_historyCompleterKey;
-    QPointer<ElidingLabel> m_labelDisplay;
-    QPointer<FancyLineEdit> m_lineEditDisplay;
-    QPointer<ShowPasswordButton> m_showPasswordButton;
-    QPointer<QTextEdit> m_textEditDisplay;
     MacroExpanderProvider m_expanderProvider;
     StringAspect::ValueAcceptor m_valueAcceptor;
     std::optional<FancyLineEdit::ValidationFunction> m_validator;
@@ -826,6 +844,8 @@ public:
     bool m_useResetButton = false;
     bool m_autoApplyOnEditingFinished = false;
     bool m_validatePlaceHolder = false;
+
+    UndoableValue<QString> undoable;
 };
 
 class IntegerAspectPrivate
@@ -857,6 +877,13 @@ public:
 class StringListAspectPrivate
 {
 public:
+};
+
+class FilePathListAspectPrivate
+{
+public:
+    UndoableValue<QStringList> undoable;
+    QString placeHolderText;
 };
 
 class TextDisplayPrivate
@@ -1000,11 +1027,11 @@ void StringAspect::setDisplayStyle(DisplayStyle displayStyle)
 */
 void StringAspect::setPlaceHolderText(const QString &placeHolderText)
 {
+    if (d->m_placeHolderText == placeHolderText)
+        return;
+
     d->m_placeHolderText = placeHolderText;
-    if (d->m_lineEditDisplay)
-        d->m_lineEditDisplay->setPlaceholderText(placeHolderText);
-    if (d->m_textEditDisplay)
-        d->m_textEditDisplay->setPlaceholderText(placeHolderText);
+    emit placeholderTextChanged(placeHolderText);
 }
 
 /*!
@@ -1012,9 +1039,10 @@ void StringAspect::setPlaceHolderText(const QString &placeHolderText)
 */
 void StringAspect::setElideMode(Qt::TextElideMode elideMode)
 {
+    if (d->m_elideMode == elideMode)
+        return;
     d->m_elideMode = elideMode;
-    if (d->m_labelDisplay)
-        d->m_labelDisplay->setElideMode(elideMode);
+    emit elideModeChanged(elideMode);
 }
 
 /*!
@@ -1026,22 +1054,13 @@ void StringAspect::setElideMode(Qt::TextElideMode elideMode)
 void StringAspect::setHistoryCompleter(const Key &historyCompleterKey)
 {
     d->m_historyCompleterKey = historyCompleterKey;
-    if (d->m_lineEditDisplay)
-        d->m_lineEditDisplay->setHistoryCompleter(historyCompleterKey);
-}
-
-void StringAspect::setUndoRedoEnabled(bool undoRedoEnabled)
-{
-    d->m_undoRedoEnabled = undoRedoEnabled;
-    if (d->m_textEditDisplay)
-        d->m_textEditDisplay->setUndoRedoEnabled(undoRedoEnabled);
+    emit historyCompleterKeyChanged(historyCompleterKey);
 }
 
 void StringAspect::setAcceptRichText(bool acceptRichText)
 {
     d->m_acceptRichText = acceptRichText;
-    if (d->m_textEditDisplay)
-        d->m_textEditDisplay->setAcceptRichText(acceptRichText);
+    emit acceptRichTextChanged(acceptRichText);
 }
 
 void StringAspect::setMacroExpanderProvider(const MacroExpanderProvider &expanderProvider)
@@ -1062,19 +1081,12 @@ void StringAspect::setUseResetButton()
 void StringAspect::setValidationFunction(const FancyLineEdit::ValidationFunction &validator)
 {
     d->m_validator = validator;
-    if (d->m_lineEditDisplay)
-        d->m_lineEditDisplay->setValidationFunction(*d->m_validator);
+    emit validationFunctionChanged(validator);
 }
 
 void StringAspect::setAutoApplyOnEditingFinished(bool applyOnEditingFinished)
 {
     d->m_autoApplyOnEditingFinished = applyOnEditingFinished;
-}
-
-void StringAspect::validateInput()
-{
-    if (d->m_lineEditDisplay)
-        d->m_lineEditDisplay->validate();
 }
 
 void StringAspect::addToLayout(LayoutItem &parent)
@@ -1093,77 +1105,156 @@ void StringAspect::addToLayout(LayoutItem &parent)
 
     switch (d->m_displayStyle) {
     case PasswordLineEditDisplay:
-    case LineEditDisplay:
-        d->m_lineEditDisplay = createSubWidget<FancyLineEdit>();
-        d->m_lineEditDisplay->setPlaceholderText(d->m_placeHolderText);
+    case LineEditDisplay: {
+        auto lineEditDisplay = createSubWidget<FancyLineEdit>();
+        lineEditDisplay->setPlaceholderText(d->m_placeHolderText);
         if (!d->m_historyCompleterKey.isEmpty())
-            d->m_lineEditDisplay->setHistoryCompleter(d->m_historyCompleterKey);
+            lineEditDisplay->setHistoryCompleter(d->m_historyCompleterKey);
+
+        connect(this,
+                &StringAspect::historyCompleterKeyChanged,
+                lineEditDisplay,
+                [lineEditDisplay](const Key &historyCompleterKey) {
+                    lineEditDisplay->setHistoryCompleter(historyCompleterKey);
+                });
+        connect(this,
+                &StringAspect::placeholderTextChanged,
+                lineEditDisplay,
+                &FancyLineEdit::setPlaceholderText);
 
         if (d->m_validator)
-            d->m_lineEditDisplay->setValidationFunction(*d->m_validator);
-        d->m_lineEditDisplay->setTextKeepingActiveCursor(displayedString);
-        d->m_lineEditDisplay->setReadOnly(isReadOnly());
-        d->m_lineEditDisplay->setValidatePlaceHolder(d->m_validatePlaceHolder);
-        d->m_checkerImpl.updateWidgetFromCheckStatus(this, d->m_lineEditDisplay.data());
-        addLabeledItem(parent, d->m_lineEditDisplay);
-        useMacroExpander(d->m_lineEditDisplay);
-        if (d->m_useResetButton) {
-            auto resetButton = createSubWidget<QPushButton>(Tr::tr("Reset"));
-            resetButton->setEnabled(d->m_lineEditDisplay->text() != defaultValue());
-            connect(resetButton, &QPushButton::clicked, this, [this] {
-                d->m_lineEditDisplay->setText(defaultValue());
-            });
-            connect(d->m_lineEditDisplay, &QLineEdit::textChanged, this, [this, resetButton] {
-                resetButton->setEnabled(d->m_lineEditDisplay->text() != defaultValue());
-            });
-            parent.addItem(resetButton);
-        }
-        connect(d->m_lineEditDisplay, &FancyLineEdit::validChanged, this, &StringAspect::validChanged);
-        bufferToGui();
-        if (isAutoApply() && d->m_autoApplyOnEditingFinished) {
-            connect(d->m_lineEditDisplay, &FancyLineEdit::editingFinished,
-                    this, &StringAspect::handleGuiChanged);
-        } else {
-            connect(d->m_lineEditDisplay, &QLineEdit::textEdited,
-                    this, &StringAspect::handleGuiChanged);
-        }
-        if (d->m_displayStyle == PasswordLineEditDisplay) {
-            d->m_showPasswordButton = createSubWidget<ShowPasswordButton>();
-            d->m_lineEditDisplay->setEchoMode(QLineEdit::PasswordEchoOnEdit);
-            parent.addItem(d->m_showPasswordButton);
-            connect(d->m_showPasswordButton,
-                    &ShowPasswordButton::toggled,
-                    d->m_lineEditDisplay,
-                    [this] {
-                        d->m_lineEditDisplay->setEchoMode(d->m_showPasswordButton->isChecked()
-                                                              ? QLineEdit::Normal
-                                                              : QLineEdit::PasswordEchoOnEdit);
+            lineEditDisplay->setValidationFunction(*d->m_validator);
+        lineEditDisplay->setTextKeepingActiveCursor(displayedString);
+        lineEditDisplay->setReadOnly(isReadOnly());
+        lineEditDisplay->setValidatePlaceHolder(d->m_validatePlaceHolder);
+
+        d->m_checkerImpl.updateWidgetFromCheckStatus(this, lineEditDisplay);
+
+        if (d->m_checkerImpl.m_checked.get()) {
+            connect(d->m_checkerImpl.m_checked.get(),
+                    &BoolAspect::volatileValueChanged,
+                    lineEditDisplay,
+                    [this, lineEditDisplay]() {
+                        d->m_checkerImpl.updateWidgetFromCheckStatus(this, lineEditDisplay);
                     });
         }
-        break;
-    case TextEditDisplay:
-        d->m_textEditDisplay = createSubWidget<QTextEdit>();
-        d->m_textEditDisplay->setPlaceholderText(d->m_placeHolderText);
-        d->m_textEditDisplay->setUndoRedoEnabled(d->m_undoRedoEnabled);
-        d->m_textEditDisplay->setAcceptRichText(d->m_acceptRichText);
-        d->m_textEditDisplay->setTextInteractionFlags(Qt::TextEditorInteraction);
-        d->m_textEditDisplay->setText(displayedString);
-        d->m_textEditDisplay->setReadOnly(isReadOnly());
-        d->m_checkerImpl.updateWidgetFromCheckStatus(this, d->m_textEditDisplay.data());
-        addLabeledItem(parent, d->m_textEditDisplay);
-        useMacroExpander(d->m_textEditDisplay);
+
+        addLabeledItem(parent, lineEditDisplay);
+        useMacroExpander(lineEditDisplay);
+        if (d->m_useResetButton) {
+            auto resetButton = createSubWidget<QPushButton>(Tr::tr("Reset"));
+            resetButton->setEnabled(lineEditDisplay->text() != defaultValue());
+            connect(resetButton, &QPushButton::clicked, lineEditDisplay, [this, lineEditDisplay] {
+                lineEditDisplay->setText(defaultValue());
+            });
+            connect(lineEditDisplay,
+                    &QLineEdit::textChanged,
+                    resetButton,
+                    [this, lineEditDisplay, resetButton] {
+                        resetButton->setEnabled(lineEditDisplay->text() != defaultValue());
+                    });
+            parent.addItem(resetButton);
+        }
+        connect(lineEditDisplay, &FancyLineEdit::validChanged, this, &StringAspect::validChanged);
         bufferToGui();
-        connect(d->m_textEditDisplay, &QTextEdit::textChanged,
-                this, &StringAspect::handleGuiChanged);
+        if (isAutoApply() && d->m_autoApplyOnEditingFinished) {
+            connect(lineEditDisplay,
+                    &FancyLineEdit::editingFinished,
+                    this,
+                    [this, lineEditDisplay]() {
+                        d->undoable.set(undoStack(), lineEditDisplay->text());
+                        handleGuiChanged();
+                    });
+        } else {
+            connect(lineEditDisplay, &QLineEdit::textChanged, this, [this, lineEditDisplay]() {
+                d->undoable.set(undoStack(), lineEditDisplay->text());
+                handleGuiChanged();
+            });
+        }
+        if (d->m_displayStyle == PasswordLineEditDisplay) {
+            auto showPasswordButton = createSubWidget<ShowPasswordButton>();
+            lineEditDisplay->setEchoMode(QLineEdit::PasswordEchoOnEdit);
+            parent.addItem(showPasswordButton);
+            connect(showPasswordButton,
+                    &ShowPasswordButton::toggled,
+                    lineEditDisplay,
+                    [showPasswordButton, lineEditDisplay] {
+                        lineEditDisplay->setEchoMode(showPasswordButton->isChecked()
+                                                         ? QLineEdit::Normal
+                                                         : QLineEdit::PasswordEchoOnEdit);
+                    });
+        }
+
+        connect(&d->undoable.m_signal,
+                &UndoSignaller::changed,
+                lineEditDisplay,
+                [this, lineEditDisplay] {
+                    if (lineEditDisplay->text() != d->undoable.get())
+                        lineEditDisplay->setTextKeepingActiveCursor(d->undoable.get());
+
+                    lineEditDisplay->validate();
+                });
+
         break;
-    case LabelDisplay:
-        d->m_labelDisplay = createSubWidget<ElidingLabel>();
-        d->m_labelDisplay->setElideMode(d->m_elideMode);
-        d->m_labelDisplay->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        d->m_labelDisplay->setText(displayedString);
-        d->m_labelDisplay->setToolTip(d->m_showToolTipOnLabel ? displayedString : toolTip());
-        addLabeledItem(parent, d->m_labelDisplay);
+    }
+    case TextEditDisplay: {
+        auto textEditDisplay = createSubWidget<QTextEdit>();
+        textEditDisplay->setPlaceholderText(d->m_placeHolderText);
+        textEditDisplay->setUndoRedoEnabled(false);
+        textEditDisplay->setAcceptRichText(d->m_acceptRichText);
+        textEditDisplay->setTextInteractionFlags(Qt::TextEditorInteraction);
+        textEditDisplay->setText(displayedString);
+        textEditDisplay->setReadOnly(isReadOnly());
+        d->m_checkerImpl.updateWidgetFromCheckStatus(this, textEditDisplay);
+
+        if (d->m_checkerImpl.m_checked) {
+            connect(d->m_checkerImpl.m_checked.get(),
+                    &BoolAspect::volatileValueChanged,
+                    textEditDisplay,
+                    [this, textEditDisplay]() {
+                        d->m_checkerImpl.updateWidgetFromCheckStatus(this, textEditDisplay);
+                    });
+        }
+
+        addLabeledItem(parent, textEditDisplay);
+        useMacroExpander(textEditDisplay);
+        bufferToGui();
+        connect(this,
+                &StringAspect::acceptRichTextChanged,
+                textEditDisplay,
+                &QTextEdit::setAcceptRichText);
+        connect(this,
+                &StringAspect::placeholderTextChanged,
+                textEditDisplay,
+                &QTextEdit::setPlaceholderText);
+
+        connect(textEditDisplay, &QTextEdit::textChanged, this, [this, textEditDisplay]() {
+            d->undoable.set(undoStack(), textEditDisplay->toPlainText());
+            handleGuiChanged();
+        });
+
+        connect(&d->undoable.m_signal,
+                &UndoSignaller::changed,
+                textEditDisplay,
+                [this, textEditDisplay] { textEditDisplay->setText(d->undoable.get()); });
         break;
+    }
+    case LabelDisplay: {
+        auto labelDisplay = createSubWidget<ElidingLabel>();
+        labelDisplay->setElideMode(d->m_elideMode);
+        labelDisplay->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        labelDisplay->setText(displayedString);
+        labelDisplay->setToolTip(d->m_showToolTipOnLabel ? displayedString : toolTip());
+        connect(this, &StringAspect::setElideMode, labelDisplay, &ElidingLabel::setElideMode);
+        addLabeledItem(parent, labelDisplay);
+
+        connect(&d->undoable.m_signal, &UndoSignaller::changed, labelDisplay, [this, labelDisplay] {
+            labelDisplay->setText(d->undoable.get());
+            labelDisplay->setToolTip(d->m_showToolTipOnLabel ? d->undoable.get() : toolTip());
+        });
+
+        break;
+    }
     }
 
     d->m_checkerImpl.addToLayoutLast(parent);
@@ -1177,11 +1268,7 @@ QString StringAspect::expandedValue() const
 
 bool StringAspect::guiToBuffer()
 {
-    if (d->m_lineEditDisplay)
-        return updateStorage(m_buffer, d->m_lineEditDisplay->text());
-    if (d->m_textEditDisplay)
-        return updateStorage(m_buffer, d->m_textEditDisplay->document()->toPlainText());
-    return false;
+    return updateStorage(m_buffer, d->undoable.get());
 }
 
 bool StringAspect::bufferToInternal()
@@ -1201,24 +1288,7 @@ bool StringAspect::internalToBuffer()
 
 void StringAspect::bufferToGui()
 {
-    if (d->m_lineEditDisplay) {
-        d->m_lineEditDisplay->setTextKeepingActiveCursor(m_buffer);
-        d->m_checkerImpl.updateWidgetFromCheckStatus(this, d->m_lineEditDisplay.data());
-    }
-
-    if (d->m_textEditDisplay) {
-        const QString old = d->m_textEditDisplay->document()->toPlainText();
-        if (m_buffer != old)
-            d->m_textEditDisplay->setText(m_buffer);
-        d->m_checkerImpl.updateWidgetFromCheckStatus(this, d->m_textEditDisplay.data());
-    }
-
-    if (d->m_labelDisplay) {
-        d->m_labelDisplay->setText(m_buffer);
-        d->m_labelDisplay->setToolTip(d->m_showToolTipOnLabel ? m_buffer : toolTip());
-    }
-
-    validateInput();
+    d->undoable.setWithoutUndo(m_buffer);
 }
 
 /*!
@@ -1668,12 +1738,51 @@ BoolAspect::BoolAspect(AspectContainer *container)
 {
     setDefaultValue(false);
     setSpan(2, 1);
+
+    d->m_undoable.setSilently(false);
 }
 
 /*!
     \internal
 */
 BoolAspect::~BoolAspect() = default;
+
+void BoolAspect::addToLayoutHelper(Layouting::LayoutItem &parent, QAbstractButton *button)
+{
+    switch (d->m_labelPlacement) {
+    case LabelPlacement::Compact:
+        button->setText(labelText());
+        parent.addItem(button);
+        break;
+    case LabelPlacement::AtCheckBox:
+        button->setText(labelText());
+        parent.addItem(empty());
+        parent.addItem(button);
+        break;
+    case LabelPlacement::InExtraLabel:
+        addLabeledItem(parent, button);
+        break;
+    }
+
+    connect(button, &QAbstractButton::clicked, this, [button, this] {
+        d->m_undoable.set(undoStack(), button->isChecked());
+    });
+
+    connect(&d->m_undoable.m_signal, &UndoSignaller::changed, button, [button, this] {
+        button->setChecked(d->m_undoable.get());
+        handleGuiChanged();
+    });
+}
+
+LayoutItem BoolAspect::adoptButton(QAbstractButton *button)
+{
+    LayoutItem parent;
+
+    addToLayoutHelper(parent, button);
+
+    bufferToGui();
+    return parent;
+}
 
 /*!
     \reimp
@@ -1682,37 +1791,9 @@ void BoolAspect::addToLayout(Layouting::LayoutItem &parent)
 {
     QTC_ASSERT(m_buffer == m_internal, m_buffer = m_internal);
 
-    if (!d->m_buttonIsAdopted) {
-        QTC_CHECK(!d->m_button);
-        d->m_button = createSubWidget<QCheckBox>();
-    }
-    switch (d->m_labelPlacement) {
-    case LabelPlacement::Compact:
-        d->m_button->setText(labelText());
-        parent.addItem(d->m_button.data());
-        break;
-    case LabelPlacement::AtCheckBox:
-        d->m_button->setText(labelText());
-        parent.addItem(empty());
-        parent.addItem(d->m_button.data());
-        break;
-    case LabelPlacement::InExtraLabel:
-        addLabeledItem(parent, d->m_button);
-        break;
-    }
-
+    QCheckBox *checkBox = createSubWidget<QCheckBox>();
+    addToLayoutHelper(parent, checkBox);
     bufferToGui();
-    connect(d->m_button.data(), &QAbstractButton::clicked,
-            this, &BoolAspect::handleGuiChanged);
-}
-
-void BoolAspect::adoptButton(QAbstractButton *button)
-{
-    QTC_ASSERT(button, return);
-    QTC_CHECK(!d->m_button);
-    d->m_button = button;
-    d->m_buttonIsAdopted = true;
-    registerSubWidget(button);
 }
 
 std::function<void (QObject *)> BoolAspect::groupChecker()
@@ -1723,7 +1804,16 @@ std::function<void (QObject *)> BoolAspect::groupChecker()
         registerSubWidget(groupBox);
         groupBox->setCheckable(true);
         groupBox->setChecked(value());
-        d->m_groupBox = groupBox;
+
+        connect(groupBox, &QGroupBox::clicked, this, [groupBox, this] {
+            d->m_undoable.set(undoStack(), groupBox->isChecked());
+        });
+
+        connect(&d->m_undoable.m_signal, &UndoSignaller::changed, groupBox, [groupBox, this] {
+            groupBox->setChecked(d->m_undoable.get());
+            handleGuiChanged();
+        });
+        bufferToGui();
     };
 }
 
@@ -1745,20 +1835,12 @@ QAction *BoolAspect::action()
 
 bool BoolAspect::guiToBuffer()
 {
-    const bool old = m_buffer;
-    if (d->m_button)
-        m_buffer = d->m_button->isChecked();
-    else if (d->m_groupBox)
-        m_buffer = d->m_groupBox->isChecked();
-    return m_buffer != old;
+    return updateStorage(m_buffer, d->m_undoable.get());
 }
 
 void BoolAspect::bufferToGui()
 {
-    if (d->m_button)
-        d->m_button->setChecked(m_buffer);
-    else if (d->m_groupBox)
-        d->m_groupBox->setChecked(m_buffer);
+    d->m_undoable.setWithoutUndo(m_buffer);
 }
 
 void BoolAspect::setLabel(const QString &labelText, LabelPlacement labelPlacement)
@@ -2376,6 +2458,116 @@ void StringListAspect::removeValues(const QStringList &values)
 }
 
 /*!
+    \class Utils::FilePathListAspect
+    \inmodule QtCreator
+
+    \brief A filepath list aspect represents a property of some object
+    that is a list of filepathList.
+*/
+
+FilePathListAspect::FilePathListAspect(AspectContainer *container)
+    : TypedAspect(container)
+    , d(new Internal::FilePathListAspectPrivate)
+{
+    setDefaultValue(QStringList());
+}
+
+FilePathListAspect::~FilePathListAspect() = default;
+
+FilePaths FilePathListAspect::operator()() const
+{
+    return Utils::transform(m_internal, &FilePath::fromUserInput);
+}
+
+bool FilePathListAspect::guiToBuffer()
+{
+    const QStringList newValue = d->undoable.get();
+    if (newValue != m_buffer) {
+        m_buffer = newValue;
+        return true;
+    }
+    return false;
+}
+
+void FilePathListAspect::bufferToGui()
+{
+    d->undoable.setWithoutUndo(m_buffer);
+}
+
+void FilePathListAspect::addToLayout(LayoutItem &parent)
+{
+    d->undoable.setSilently(value());
+
+    PathListEditor *editor = new PathListEditor;
+    editor->setPathList(value());
+    connect(editor, &PathListEditor::changed, this, [this, editor] {
+        d->undoable.set(undoStack(), editor->pathList());
+    });
+    connect(&d->undoable.m_signal, &UndoSignaller::changed, this, [this, editor] {
+        if (editor->pathList() != d->undoable.get())
+            editor->setPathList(d->undoable.get());
+
+        handleGuiChanged();
+    });
+
+    editor->setToolTip(toolTip());
+    editor->setMaximumHeight(100);
+    editor->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    editor->setPlaceholderText(d->placeHolderText);
+
+    registerSubWidget(editor);
+
+    parent.addItem(editor);
+}
+
+void FilePathListAspect::setPlaceHolderText(const QString &placeHolderText)
+{
+    d->placeHolderText = placeHolderText;
+
+    forEachSubWidget([placeHolderText](QWidget *widget) {
+        if (auto pathListEditor = qobject_cast<PathListEditor *>(widget)) {
+            pathListEditor->setPlaceholderText(placeHolderText);
+        }
+    });
+}
+
+void FilePathListAspect::appendValue(const FilePath &path, bool allowDuplicates)
+{
+    const QString asString = path.toUserOutput();
+    QStringList val = value();
+    if (allowDuplicates || !val.contains(asString))
+        val.append(asString);
+    setValue(val);
+}
+
+void FilePathListAspect::removeValue(const FilePath &s)
+{
+    QStringList val = value();
+    val.removeAll(s.toUserOutput());
+    setValue(val);
+}
+
+void FilePathListAspect::appendValues(const FilePaths &paths, bool allowDuplicates)
+{
+    QStringList val = value();
+
+    for (const FilePath &path : paths) {
+        const QString asString = path.toUserOutput();
+        if (allowDuplicates || !val.contains(asString))
+            val.append(asString);
+    }
+    setValue(val);
+}
+
+void FilePathListAspect::removeValues(const FilePaths &paths)
+{
+    QStringList val = value();
+    for (const FilePath &path : paths)
+        val.removeAll(path.toUserOutput());
+    setValue(val);
+}
+
+/*!
     \class Utils::IntegerListAspect
     \internal
     \inmodule QtCreator
@@ -2444,6 +2636,10 @@ void TextDisplay::addToLayout(LayoutItem &parent)
         // have a QWidget parent yet when used in a LayoutBuilder.
         if (!isVisible())
             d->m_label->setVisible(false);
+
+        connect(this, &TextDisplay::changed, d->m_label, [this] {
+            d->m_label->setText(d->m_message);
+        });
     }
     parent.addItem(d->m_label.data());
 }
@@ -2462,6 +2658,7 @@ void TextDisplay::setIconType(InfoLabel::InfoType t)
 void TextDisplay::setText(const QString &message)
 {
     d->m_message = message;
+    emit changed();
 }
 
 /*!
@@ -2479,7 +2676,6 @@ class Internal::AspectContainerPrivate
 public:
     QList<BaseAspect *> m_items; // Both owned and non-owned.
     QList<BaseAspect *> m_ownedItems; // Owned only.
-    bool m_autoApply = true;
     QStringList m_settingsGroup;
     std::function<Layouting::LayoutItem ()> m_layouter;
 };
@@ -2501,7 +2697,7 @@ AspectContainer::~AspectContainer()
 */
 void AspectContainer::registerAspect(BaseAspect *aspect, bool takeOwnership)
 {
-    aspect->setAutoApply(d->m_autoApply);
+    aspect->setAutoApply(isAutoApply());
     d->m_items.append(aspect);
     if (takeOwnership)
         d->m_ownedItems.append(aspect);
@@ -2631,7 +2827,8 @@ void AspectContainer::reset()
 
 void AspectContainer::setAutoApply(bool on)
 {
-    d->m_autoApply = on;
+    BaseAspect::setAutoApply(on);
+
     for (BaseAspect *aspect : std::as_const(d->m_items))
         aspect->setAutoApply(on);
 }
@@ -2643,6 +2840,14 @@ bool AspectContainer::isDirty()
             return true;
     }
     return false;
+}
+
+void AspectContainer::setUndoStack(QUndoStack *undoStack)
+{
+    BaseAspect::setUndoStack(undoStack);
+
+    for (BaseAspect *aspect : std::as_const(d->m_items))
+        aspect->setUndoStack(undoStack);
 }
 
 bool AspectContainer::equals(const AspectContainer &other) const
@@ -2789,7 +2994,7 @@ SettingsGroupNester::SettingsGroupNester(const QStringList &groups)
 {
     QTC_ASSERT(theSettings, return);
     for (const QString &group : groups)
-        theSettings->beginGroup(group);
+        theSettings->beginGroup(keyFromString(group));
 }
 
 SettingsGroupNester::~SettingsGroupNester()
@@ -2797,6 +3002,410 @@ SettingsGroupNester::~SettingsGroupNester()
     QTC_ASSERT(theSettings, return);
     for (int i = 0; i != m_groupCount; ++i)
         theSettings->endGroup();
+}
+
+class AddItemCommand : public QUndoCommand
+{
+public:
+    AddItemCommand(AspectList *aspect, const std::shared_ptr<BaseAspect> &item)
+        : m_aspect(aspect)
+        , m_item(item)
+    {}
+
+    void undo() override { m_aspect->actualRemoveItem(m_item); }
+    void redo() override { m_aspect->actualAddItem(m_item); }
+
+private:
+    AspectList *m_aspect;
+    std::shared_ptr<BaseAspect> m_item;
+};
+
+class RemoveItemCommand : public QUndoCommand
+{
+public:
+    RemoveItemCommand(AspectList *aspect, const std::shared_ptr<BaseAspect> &item)
+        : m_aspect(aspect)
+        , m_item(item)
+    {}
+
+    void undo() override { m_aspect->actualAddItem(m_item); }
+    void redo() override { m_aspect->actualRemoveItem(m_item); }
+
+private:
+    AspectList *m_aspect;
+    std::shared_ptr<BaseAspect> m_item;
+};
+
+class Internal::AspectListPrivate
+{
+public:
+    QList<std::shared_ptr<BaseAspect>> items;
+    QList<std::shared_ptr<BaseAspect>> volatileItems;
+    AspectList::CreateItem createItem;
+    AspectList::ItemCallback itemAdded;
+    AspectList::ItemCallback itemRemoved;
+};
+
+AspectList::AspectList(Utils::AspectContainer *container)
+    : Utils::BaseAspect(container)
+    , d(std::make_unique<Internal::AspectListPrivate>())
+{}
+
+AspectList::~AspectList() = default;
+
+void AspectList::fromMap(const Utils::Store &map)
+{
+    QTC_ASSERT(!settingsKey().isEmpty(), return);
+
+    QVariantList list = map[settingsKey()].toList();
+    d->volatileItems.clear();
+    for (const QVariant &entry : list) {
+        auto item = d->createItem();
+        item->setAutoApply(isAutoApply());
+        item->setUndoStack(undoStack());
+        item->fromMap(Utils::storeFromVariant(entry));
+        d->volatileItems.append(item);
+    }
+    d->items = d->volatileItems;
+}
+
+QVariantList AspectList::toList(bool v) const
+{
+    QVariantList list;
+    const auto &items = v ? d->volatileItems : d->items;
+
+    for (const std::shared_ptr<BaseAspect> &item : items) {
+        Utils::Store childStore;
+        if (v)
+            item->volatileToMap(childStore);
+        else
+            item->toMap(childStore);
+
+        list.append(Utils::variantFromStore(childStore));
+    }
+
+    return list;
+}
+
+void AspectList::toMap(Utils::Store &map) const
+{
+    QTC_ASSERT(!settingsKey().isEmpty(), return);
+    const Utils::Key key = settingsKey();
+    map[key] = toList(false);
+}
+
+void AspectList::volatileToMap(Utils::Store &map) const
+{
+    QTC_ASSERT(!settingsKey().isEmpty(), return);
+    const Utils::Key key = settingsKey();
+    map[key] = toList(true);
+}
+
+std::shared_ptr<BaseAspect> AspectList::actualAddItem(const std::shared_ptr<BaseAspect> &item)
+{
+    item->setAutoApply(isAutoApply());
+    item->setUndoStack(undoStack());
+
+    d->volatileItems.append(item);
+    if (d->itemAdded)
+        d->itemAdded(item);
+    emit volatileValueChanged();
+    if (isAutoApply())
+        d->items = d->volatileItems;
+    return item;
+}
+
+QList<std::shared_ptr<BaseAspect>> AspectList::items() const
+{
+    return d->items;
+}
+QList<std::shared_ptr<BaseAspect>> AspectList::volatileItems() const
+{
+    return d->volatileItems;
+}
+
+std::shared_ptr<BaseAspect> AspectList::addItem(const std::shared_ptr<BaseAspect> &item)
+{
+    if (undoStack())
+        undoStack()->push(new AddItemCommand(this, item));
+    else
+        return actualAddItem(item);
+
+    return item;
+}
+
+void AspectList::actualRemoveItem(const std::shared_ptr<BaseAspect> &item)
+{
+    d->volatileItems.removeOne(item);
+    if (d->itemRemoved)
+        d->itemRemoved(item);
+    emit volatileValueChanged();
+    if (isAutoApply())
+        d->items = d->volatileItems;
+}
+
+void AspectList::removeItem(const std::shared_ptr<BaseAspect> &item)
+{
+    if (undoStack())
+        undoStack()->push(new RemoveItemCommand(this, item));
+    else
+        actualRemoveItem(item);
+}
+
+void AspectList::clear()
+{
+    if (undoStack()) {
+        undoStack()->beginMacro("Clear");
+
+        for (const std::shared_ptr<BaseAspect> &item : volatileItems())
+            undoStack()->push(new RemoveItemCommand(this, item));
+
+        undoStack()->endMacro();
+    } else {
+        for (const std::shared_ptr<BaseAspect> &item : volatileItems())
+            actualRemoveItem(item);
+    }
+}
+
+void AspectList::apply()
+{
+    d->items = d->volatileItems;
+    forEachItem<BaseAspect>([](const std::shared_ptr<BaseAspect> &aspect) { aspect->apply(); });
+    emit changed();
+}
+
+void AspectList::setCreateItemFunction(CreateItem createItem)
+{
+    d->createItem = createItem;
+}
+
+void AspectList::setItemAddedCallback(const ItemCallback &callback)
+{
+    d->itemAdded = callback;
+}
+void AspectList::setItemRemovedCallback(const ItemCallback &callback)
+{
+    d->itemRemoved = callback;
+}
+
+qsizetype AspectList::size() const
+{
+    return d->volatileItems.size();
+}
+
+bool AspectList::isDirty()
+{
+    if (d->items != d->volatileItems)
+        return true;
+
+    for (const std::shared_ptr<BaseAspect> &item : d->volatileItems) {
+        if (item->isDirty())
+            return true;
+    }
+    return false;
+}
+
+class ColoredRow : public QWidget
+{
+public:
+    ColoredRow(int idx, QWidget *parent = nullptr)
+        : QWidget(parent)
+        , m_index(idx)
+    {}
+    void paintEvent(QPaintEvent *event)
+    {
+        QPainter p(this);
+        QPalette pal = palette();
+        if (m_index % 2 == 0)
+            p.fillRect(event->rect(), pal.base());
+        else
+            p.fillRect(event->rect(), pal.alternateBase());
+    }
+
+private:
+    int m_index;
+};
+
+void AspectList::addToLayout(Layouting::LayoutItem &parent)
+{
+    using namespace Layouting;
+
+    QScrollArea *scrollArea = new QScrollArea;
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setMaximumHeight(100);
+    scrollArea->setMinimumHeight(100);
+    scrollArea->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+
+    auto fill = [this, scrollArea]() mutable {
+        if (scrollArea->widget())
+            delete scrollArea->takeWidget();
+
+        auto add = new QPushButton(Tr::tr("Add"));
+        QObject::connect(add, &QPushButton::clicked, scrollArea, [this] {
+            addItem(d->createItem());
+        });
+
+        Column column{noMargin()};
+
+        forEachItem<BaseAspect>([&column, this](const std::shared_ptr<BaseAspect> &item, int idx) {
+            auto removeBtn = new IconButton;
+            removeBtn->setIcon(Utils::Icons::EDIT_CLEAR.icon());
+            removeBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+            QObject::connect(removeBtn, &QPushButton::clicked, removeBtn, [this, item] {
+                removeItem(item);
+            });
+            ColoredRow *rowWdgt = new ColoredRow(idx);
+            // clang-format off
+            auto row = Row {
+                *item,
+                removeBtn,
+                spacing(5),
+            };
+            // clang-format on
+            row.attachTo(rowWdgt);
+            column.addItem(rowWdgt);
+        });
+
+        ColoredRow *rowWdgt = new ColoredRow(size());
+        Row{st, add}.attachTo(rowWdgt);
+        column.addItem(rowWdgt);
+
+        QWidget *contentWidget = column.emerge();
+        contentWidget->layout()->setSpacing(1);
+
+        scrollArea->setWidget(contentWidget);
+    };
+
+    fill();
+    QObject::connect(this, &AspectList::volatileValueChanged, scrollArea, fill);
+
+    parent.addItem(scrollArea);
+}
+
+StringSelectionAspect::StringSelectionAspect(AspectContainer *container)
+    : TypedAspect<QString>(container)
+{}
+
+QStandardItem *StringSelectionAspect::itemById(const QString &id)
+{
+    for (int i = 0; i < m_model->rowCount(); ++i) {
+        auto cur = m_model->item(i);
+        if (cur->data() == id)
+            return cur;
+    }
+
+    return nullptr;
+}
+
+void StringSelectionAspect::bufferToGui()
+{
+    if (!m_model) {
+        m_undoable.setSilently(m_buffer);
+        return;
+    }
+
+    auto selected = itemById(m_buffer);
+    if (selected) {
+        m_undoable.setSilently(selected->data().toString());
+        m_selectionModel->setCurrentIndex(selected->index(),
+                                          QItemSelectionModel::SelectionFlag::ClearAndSelect);
+        return;
+    }
+
+    if (m_model->rowCount() > 0) {
+        m_undoable.setSilently(m_model->item(0)->data().toString());
+        m_selectionModel->setCurrentIndex(m_model->item(0)->index(),
+                                          QItemSelectionModel::SelectionFlag::ClearAndSelect);
+    } else {
+        m_undoable.setSilently(m_buffer);
+        m_selectionModel->setCurrentIndex(QModelIndex(), QItemSelectionModel::SelectionFlag::Clear);
+    }
+
+    handleGuiChanged();
+}
+
+bool StringSelectionAspect::guiToBuffer()
+{
+    if (!m_model)
+        return false;
+
+    auto oldBuffer = m_buffer;
+
+    m_buffer = m_undoable.get();
+
+    return oldBuffer != m_buffer;
+}
+
+void StringSelectionAspect::addToLayout(Layouting::LayoutItem &parent)
+{
+    QTC_ASSERT(m_fillCallback, return);
+
+    auto cb = [this](const QList<QStandardItem *> &items) {
+        m_model->clear();
+        for (QStandardItem *item : items)
+            m_model->appendRow(item);
+
+        bufferToGui();
+    };
+
+    if (!m_model) {
+        m_model = new QStandardItemModel(this);
+        m_selectionModel = new QItemSelectionModel(m_model);
+
+        connect(this, &StringSelectionAspect::refillRequested, this, [this, cb] {
+            m_fillCallback(cb);
+        });
+
+        m_fillCallback(cb);
+    }
+
+    QComboBox *comboBox = new QComboBox();
+    comboBox->setInsertPolicy(QComboBox::InsertPolicy::NoInsert);
+    comboBox->setEditable(true);
+    comboBox->completer()->setCompletionMode(QCompleter::PopupCompletion);
+    comboBox->completer()->setFilterMode(Qt::MatchContains);
+
+    comboBox->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    comboBox->setCurrentText(value());
+    comboBox->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Fixed);
+
+    comboBox->setModel(m_model);
+
+    connect(m_selectionModel,
+            &QItemSelectionModel::currentChanged,
+            comboBox,
+            [comboBox](QModelIndex currentIdx) {
+                if (currentIdx.isValid() && comboBox->currentIndex() != currentIdx.row())
+                    comboBox->setCurrentIndex(currentIdx.row());
+            });
+
+    connect(comboBox, &QComboBox::activated, this, [this](int idx) {
+        QModelIndex modelIdx = m_model->index(idx, 0);
+        if (!modelIdx.isValid())
+            return;
+
+        QString newValue = m_model->index(idx, 0).data(Qt::UserRole + 1).toString();
+        if (newValue.isEmpty())
+            return;
+
+        m_undoable.set(undoStack(), newValue);
+        bufferToGui();
+    });
+
+    connect(&m_undoable.m_signal, &UndoSignaller::changed, comboBox, [this, comboBox]() {
+        auto item = itemById(m_undoable.get());
+        if (item)
+            m_selectionModel->setCurrentIndex(item->index(), QItemSelectionModel::ClearAndSelect);
+        else
+            comboBox->setCurrentText(m_undoable.get());
+
+        handleGuiChanged();
+    });
+
+    if (m_selectionModel->currentIndex().isValid())
+        comboBox->setCurrentIndex(m_selectionModel->currentIndex().row());
+
+    return addLabeledItem(parent, comboBox);
 }
 
 } // namespace Utils

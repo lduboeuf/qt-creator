@@ -77,6 +77,8 @@
 
 #include <bindingeditor/signallist.h>
 
+using namespace Utils;
+
 namespace QmlDesigner {
 
 namespace {
@@ -1205,21 +1207,20 @@ void addFlowEffect(const SelectionContext &selectionContext, const TypeName &typ
    NodeMetaInfo effectMetaInfo = view->model()->metaInfo("FlowView." + typeName, -1, -1);
    QTC_ASSERT(typeName == "None" || effectMetaInfo.isValid(), return);
 
-   view->executeInTransaction("DesignerActionManager:addFlowEffect",
-                              [view, container, effectMetaInfo](){
+   view->executeInTransaction("DesignerActionManager:addFlowEffect", [=]() {
+       if (container.hasProperty("effect"))
+           container.removeProperty("effect");
 
-                                  if (container.hasProperty("effect"))
-                                      container.removeProperty("effect");
+       if (effectMetaInfo.isQtObject()) {
+           ModelNode effectNode = view->createModelNode(useProjectStorage()
+                                                            ? typeName
+                                                            : effectMetaInfo.typeName(),
+                                                        effectMetaInfo.majorVersion(),
+                                                        effectMetaInfo.minorVersion());
 
-                                  if (effectMetaInfo.isQtObject()) {
-                                      ModelNode effectNode =
-                                          view->createModelNode(effectMetaInfo.typeName(),
-                                                                effectMetaInfo.majorVersion(),
-                                                                effectMetaInfo.minorVersion());
-
-                                      container.nodeProperty("effect").reparentHere(effectNode);
-                                      view->setSelectedModelNode(effectNode);
-                                  }
+           container.nodeProperty("effect").reparentHere(effectNode);
+           view->setSelectedModelNode(effectNode);
+       }
    });
 }
 
@@ -1404,21 +1405,20 @@ void addCustomFlowEffect(const SelectionContext &selectionContext)
     NodeMetaInfo effectMetaInfo = view->model()->metaInfo(typeName, -1, -1);
     QTC_ASSERT(typeName == "None" || effectMetaInfo.isValid(), return);
 
-    view->executeInTransaction("DesignerActionManager:addFlowEffect",
-                               [view, container, effectMetaInfo](){
+    view->executeInTransaction("DesignerActionManager:addFlowEffect", [=]() {
+        if (container.hasProperty("effect"))
+            container.removeProperty("effect");
 
-                                   if (container.hasProperty("effect"))
-                                       container.removeProperty("effect");
+        if (effectMetaInfo.isValid()) {
+            ModelNode effectNode = view->createModelNode(useProjectStorage()
+                                                             ? typeName
+                                                             : effectMetaInfo.typeName(),
+                                                         effectMetaInfo.majorVersion(),
+                                                         effectMetaInfo.minorVersion());
 
-                                   if (effectMetaInfo.isValid()) {
-                                       ModelNode effectNode =
-                                           view->createModelNode(effectMetaInfo.typeName(),
-                                                                 effectMetaInfo.majorVersion(),
-                                                                 effectMetaInfo.minorVersion());
-
-                                       container.nodeProperty("effect").reparentHere(effectNode);
-                                       view->setSelectedModelNode(effectNode);
-                                   }
+            container.nodeProperty("effect").reparentHere(effectNode);
+            view->setSelectedModelNode(effectNode);
+        }
     });
 }
 
@@ -1711,8 +1711,8 @@ QString getEffectIcon(const QString &effectPath)
 
 bool useLayerEffect()
 {
-    QSettings *settings = Core::ICore::settings();
-    const QString layerEffectEntry = "QML/Designer/UseLayerEffect";
+    QtcSettings *settings = Core::ICore::settings();
+    const Key layerEffectEntry = "QML/Designer/UseLayerEffect";
 
     return settings->value(layerEffectEntry, true).toBool();
 }

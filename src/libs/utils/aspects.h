@@ -8,18 +8,27 @@
 #include "infolabel.h"
 #include "macroexpander.h"
 #include "pathchooser.h"
+#include "qtcsettings.h"
 #include "store.h"
 
 #include <functional>
 #include <memory>
 #include <optional>
 
+#include <QUndoCommand>
+
 QT_BEGIN_NAMESPACE
 class QAction;
 class QSettings;
+class QUndoStack;
+class QStandardItem;
+class QStandardItemModel;
+class QItemSelectionModel;
 QT_END_NAMESPACE
 
-namespace Layouting { class LayoutItem; }
+namespace Layouting {
+class LayoutItem;
+}
 
 namespace Utils {
 
@@ -34,6 +43,7 @@ class BoolAspectPrivate;
 class ColorAspectPrivate;
 class DoubleAspectPrivate;
 class FilePathAspectPrivate;
+class FilePathListAspectPrivate;
 class IntegerAspectPrivate;
 class MultiSelectionAspectPrivate;
 class SelectionAspectPrivate;
@@ -41,6 +51,7 @@ class StringAspectPrivate;
 class StringListAspectPrivate;
 class TextDisplayPrivate;
 class CheckableAspectImplementation;
+class AspectListPrivate;
 } // Internal
 
 class QTCREATOR_UTILS_EXPORT BaseAspect : public QObject
@@ -78,7 +89,10 @@ public:
     void setVisible(bool visible);
 
     bool isAutoApply() const;
-    void setAutoApply(bool on);
+    virtual void setAutoApply(bool on);
+
+    virtual void setUndoStack(QUndoStack *undoStack);
+    QUndoStack *undoStack() const;
 
     bool isEnabled() const;
     void setEnabled(bool enabled);
@@ -180,8 +194,8 @@ public:
 
     Data::Ptr extractData() const;
 
-    static void setQtcSettings(QSettings *settings);
-    static QSettings *qtcSettings();
+    static void setQtcSettings(QtcSettings *settings);
+    static QtcSettings *qtcSettings();
 
     // This is expensive. Do not use without good reason
     void writeToSettingsImmediatly() const;
@@ -192,6 +206,8 @@ signals:
     void labelLinkActivated(const QString &link);
     void checkedChanged();
     void enabledChanged();
+    void labelTextChanged();
+    void labelPixmapChanged();
 
 protected:
     virtual bool internalToBuffer();
@@ -201,8 +217,7 @@ protected:
 
     virtual void handleGuiChanged();
 
-    QLabel *label() const;
-    void setupLabel();
+    QLabel *createLabel();
     void addLabeledItem(Layouting::LayoutItem &parent, QWidget *widget);
 
     void setDataCreatorHelper(const DataCreator &creator) const;
@@ -234,6 +249,8 @@ protected:
     void registerSubWidget(QWidget *widget);
     static void saveToMap(Store &data, const QVariant &value,
                           const QVariant &defaultValue, const Key &key);
+
+    void forEachSubWidget(const std::function<void(QWidget *)> &func);
 
 protected:
     template <class Value>
@@ -279,7 +296,8 @@ public:
     {
         m_default = value;
         m_internal = value;
-        internalToBuffer(); // Might be more than a plain copy.
+        if (internalToBuffer()) // Might be more than a plain copy.
+            bufferToGui();
     }
 
     bool isDefaultValue() const override
@@ -419,9 +437,11 @@ public:
                   LabelPlacement labelPlacement = LabelPlacement::InExtraLabel);
     void setLabelPlacement(LabelPlacement labelPlacement);
 
-    void adoptButton(QAbstractButton *button);
+    Layouting::LayoutItem adoptButton(QAbstractButton *button);
 
 private:
+    void addToLayoutHelper(Layouting::LayoutItem &parent, QAbstractButton *button);
+
     void bufferToGui() override;
     bool guiToBuffer() override;
 
@@ -542,7 +562,6 @@ public:
     void setDisplayFilter(const std::function<QString (const QString &)> &displayFilter);
     void setPlaceHolderText(const QString &placeHolderText);
     void setHistoryCompleter(const Key &historyCompleterKey);
-    void setUndoRedoEnabled(bool readOnly);
     void setAcceptRichText(bool acceptRichText);
     void setMacroExpanderProvider(const MacroExpanderProvider &expanderProvider);
     void setUseGlobalMacroExpander();
@@ -554,8 +573,6 @@ public:
     void makeCheckable(CheckBoxPlacement checkBoxPlacement, const QString &optionalLabel, const Key &optionalBaseKey);
     bool isChecked() const;
     void setChecked(bool checked);
-
-    void validateInput();
 
     enum DisplayStyle {
         LabelDisplay,
@@ -571,6 +588,11 @@ public:
 
 signals:
     void validChanged(bool validState);
+    void elideModeChanged(Qt::TextElideMode elideMode);
+    void historyCompleterKeyChanged(const Key &historyCompleterKey);
+    void acceptRichTextChanged(bool acceptRichText);
+    void validationFunctionChanged(const FancyLineEdit::ValidationFunction &validator);
+    void placeholderTextChanged(const QString &placeholderText);
 
 protected:
     void bufferToGui() override;
@@ -766,6 +788,31 @@ private:
     std::unique_ptr<Internal::StringListAspectPrivate> d;
 };
 
+class QTCREATOR_UTILS_EXPORT FilePathListAspect : public TypedAspect<QStringList>
+{
+    Q_OBJECT
+
+public:
+    FilePathListAspect(AspectContainer *container = nullptr);
+    ~FilePathListAspect() override;
+
+    FilePaths operator()() const;
+
+    bool guiToBuffer() override;
+    void bufferToGui() override;
+
+    void addToLayout(Layouting::LayoutItem &parent) override;
+    void setPlaceHolderText(const QString &placeHolderText);
+
+    void appendValue(const FilePath &path, bool allowDuplicates = true);
+    void removeValue(const FilePath &path);
+    void appendValues(const FilePaths &values, bool allowDuplicates = true);
+    void removeValues(const FilePaths &values);
+
+private:
+    std::unique_ptr<Internal::FilePathListAspectPrivate> d;
+};
+
 class QTCREATOR_UTILS_EXPORT IntegersAspect : public TypedAspect<QList<int>>
 {
     Q_OBJECT
@@ -859,8 +906,9 @@ public:
     void reset();
     bool equals(const AspectContainer &other) const;
     void copyFrom(const AspectContainer &other);
-    void setAutoApply(bool on);
+    void setAutoApply(bool on) override;
     bool isDirty() override;
+    void setUndoStack(QUndoStack *undoStack) override;
 
     template <typename T> T *aspect() const
     {
@@ -897,6 +945,171 @@ signals:
 
 private:
     std::unique_ptr<Internal::AspectContainerPrivate> d;
+};
+
+// Because QObject cannot be a template
+class QTCREATOR_UTILS_EXPORT UndoSignaller : public QObject
+{
+    Q_OBJECT
+public:
+    void emitChanged() { emit changed(); }
+signals:
+    void changed();
+};
+
+template<class T>
+class QTCREATOR_UTILS_EXPORT UndoableValue
+{
+public:
+    class UndoCmd : public QUndoCommand
+    {
+    public:
+        UndoCmd(UndoableValue<T> *value, const T &oldValue, const T &newValue)
+            : m_value(value)
+            , m_oldValue(oldValue)
+            , m_newValue(newValue)
+        {}
+
+        void undo() override { m_value->setInternal(m_oldValue); }
+        void redo() override { m_value->setInternal(m_newValue); }
+
+    private:
+        UndoableValue<T> *m_value;
+        T m_oldValue;
+        T m_newValue;
+    };
+
+    void set(QUndoStack *stack, const T &value)
+    {
+        if (m_value == value)
+            return;
+
+        if (stack)
+            stack->push(new UndoCmd(this, m_value, value));
+        else
+            setInternal(value);
+    }
+
+    void setSilently(const T &value) { m_value = value; }
+    void setWithoutUndo(const T &value) { setInternal(value); }
+
+    T get() const { return m_value; }
+
+    UndoSignaller m_signal;
+
+private:
+    void setInternal(const T &value)
+    {
+        m_value = value;
+        m_signal.emitChanged();
+    }
+
+private:
+    T m_value;
+};
+
+class QTCREATOR_UTILS_EXPORT AspectList : public Utils::BaseAspect
+{
+public:
+    using CreateItem = std::function<std::shared_ptr<BaseAspect>()>;
+    using ItemCallback = std::function<void(std::shared_ptr<BaseAspect>)>;
+
+    AspectList(Utils::AspectContainer *container = nullptr);
+    ~AspectList() override;
+
+    void fromMap(const Utils::Store &map) override;
+    void toMap(Utils::Store &map) const override;
+
+    void volatileToMap(Utils::Store &map) const override;
+    QVariantList toList(bool v) const;
+
+    QList<std::shared_ptr<BaseAspect>> items() const;
+    QList<std::shared_ptr<BaseAspect>> volatileItems() const;
+
+    std::shared_ptr<BaseAspect> addItem(const std::shared_ptr<BaseAspect> &item);
+    std::shared_ptr<BaseAspect> actualAddItem(const std::shared_ptr<BaseAspect> &item);
+
+    void removeItem(const std::shared_ptr<BaseAspect> &item);
+    void actualRemoveItem(const std::shared_ptr<BaseAspect> &item);
+    void clear();
+
+    void apply() override;
+
+    void setCreateItemFunction(CreateItem createItem);
+
+    template<class T>
+    void forEachItem(std::function<void(const std::shared_ptr<T> &)> callback)
+    {
+        for (const auto &item : volatileItems())
+            callback(std::static_pointer_cast<T>(item));
+    }
+
+    template<class T>
+    void forEachItem(std::function<void(const std::shared_ptr<T> &, int)> callback)
+    {
+        int idx = 0;
+        for (const auto &item : volatileItems())
+            callback(std::static_pointer_cast<T>(item), idx++);
+    }
+
+    void setItemAddedCallback(const ItemCallback &callback);
+    void setItemRemovedCallback(const ItemCallback &callback);
+
+    template<class T>
+    void setItemAddedCallback(const std::function<void(const std::shared_ptr<T>)> &callback)
+    {
+        setItemAddedCallback([callback](const std::shared_ptr<BaseAspect> &item) {
+            callback(std::static_pointer_cast<T>(item));
+        });
+    }
+
+    template<class T>
+    void setItemRemovedCallback(const std::function<void(const std::shared_ptr<T>)> &callback)
+    {
+        setItemRemovedCallback([callback](const std::shared_ptr<BaseAspect> &item) {
+            callback(std::static_pointer_cast<T>(item));
+        });
+    }
+
+    qsizetype size() const;
+    bool isDirty() override;
+
+    QVariant volatileVariantValue() const override { return {}; }
+
+    void addToLayout(Layouting::LayoutItem &parent) override;
+
+private:
+    std::unique_ptr<Internal::AspectListPrivate> d;
+};
+
+class QTCREATOR_UTILS_EXPORT StringSelectionAspect : public Utils::TypedAspect<QString>
+{
+    Q_OBJECT
+public:
+    StringSelectionAspect(Utils::AspectContainer *container = nullptr);
+
+    void addToLayout(Layouting::LayoutItem &parent) override;
+
+    using ResultCallback = std::function<void(QList<QStandardItem *> items)>;
+    using FillCallback = std::function<void(ResultCallback)>;
+    void setFillCallback(FillCallback callback) { m_fillCallback = callback; }
+
+    void refill() { emit refillRequested(); }
+
+    void bufferToGui() override;
+    bool guiToBuffer() override;
+
+signals:
+    void refillRequested();
+
+private:
+    QStandardItem *itemById(const QString &id);
+
+    FillCallback m_fillCallback;
+    QStandardItemModel *m_model{nullptr};
+    QItemSelectionModel *m_selectionModel{nullptr};
+
+    Utils::UndoableValue<QString> m_undoable;
 };
 
 } // namespace Utils

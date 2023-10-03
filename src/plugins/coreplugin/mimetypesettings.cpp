@@ -104,7 +104,7 @@ public:
 
     QList<Utils::MimeType> m_mimeTypes;
     mutable QHash<Utils::MimeType, QList<IEditorFactory *>> m_handlersByMimeType;
-    QHash<Utils::MimeType, IEditorFactory *> m_userDefault;
+    QHash<QString, IEditorFactory *> m_userDefault;
 };
 
 int MimeTypeSettingsModel::rowCount(const QModelIndex &) const
@@ -149,7 +149,7 @@ QVariant MimeTypeSettingsModel::data(const QModelIndex &modelIndex, int role) co
     } else if (role == Qt::FontRole) {
         if (column == 1) {
             const Utils::MimeType &type = m_mimeTypes.at(modelIndex.row());
-            if (m_userDefault.contains(type)) {
+            if (m_userDefault.contains(type.name())) {
                 QFont font = QGuiApplication::font();
                 font.setItalic(true);
                 return font;
@@ -174,9 +174,9 @@ bool MimeTypeSettingsModel::setData(const QModelIndex &index, const QVariant &va
     const QList<IEditorFactory *> handlers = handlersForMimeType(mimeType);
     QTC_ASSERT(handlers.contains(factory), return false);
     if (handlers.first() == factory) // selection is the default anyhow
-        m_userDefault.remove(mimeType);
+        m_userDefault.remove(mimeType.name());
     else
-        m_userDefault.insert(mimeType, factory);
+        m_userDefault.insert(mimeType.name(), factory);
     emit dataChanged(index, index);
     return true;
 }
@@ -209,8 +209,8 @@ QList<IEditorFactory *> MimeTypeSettingsModel::handlersForMimeType(const Utils::
 
 IEditorFactory *MimeTypeSettingsModel::defaultHandlerForMimeType(const Utils::MimeType &mimeType) const
 {
-    if (m_userDefault.contains(mimeType))
-        return m_userDefault.value(mimeType);
+    if (m_userDefault.contains(mimeType.name()))
+        return m_userDefault.value(mimeType.name());
     const QList<IEditorFactory *> handlers = handlersForMimeType(mimeType);
     return handlers.isEmpty() ? nullptr : handlers.first();
 }
@@ -633,7 +633,7 @@ void MimeTypeSettingsPrivate::writeUserModifiedMimeTypes()
 {
     static Utils::FilePath modifiedMimeTypesFile = ICore::userResourcePath(kModifiedMimeTypesFile);
 
-    if (QFile::exists(modifiedMimeTypesFile.toString())
+    if (QFileInfo::exists(modifiedMimeTypesFile.toString())
             || QDir().mkpath(modifiedMimeTypesFile.parentDir().toString())) {
         QFile file(modifiedMimeTypesFile.toString());
         if (file.open(QFile::WriteOnly | QFile::Truncate)) {
@@ -746,17 +746,23 @@ MimeTypeSettingsPrivate::UserMimeTypeHash MimeTypeSettingsPrivate::readUserModif
     return userMimeTypes;
 }
 
-void MimeTypeSettingsPrivate::applyUserModifiedMimeTypes(const UserMimeTypeHash &mimeTypes)
+static void registerUserModifiedMimeTypes(const MimeTypeSettingsPrivate::UserMimeTypeHash &mimeTypes)
 {
-    // register in mime data base, and remember for later
     for (auto it = mimeTypes.constBegin(); it != mimeTypes.constEnd(); ++it) {
         Utils::MimeType mt = Utils::mimeTypeForName(it.key());
-        if (!mt.isValid()) // loaded from settings
+        if (!mt.isValid())
             continue;
-        m_userModifiedMimeTypes.insert(it.key(), it.value());
         Utils::setGlobPatternsForMimeType(mt, it.value().globPatterns);
         Utils::setMagicRulesForMimeType(mt, it.value().rules);
     }
+}
+
+void MimeTypeSettingsPrivate::applyUserModifiedMimeTypes(const UserMimeTypeHash &mimeTypes)
+{
+    // register in mime data base, and remember for later
+    for (auto it = mimeTypes.constBegin(); it != mimeTypes.constEnd(); ++it)
+        m_userModifiedMimeTypes.insert(it.key(), it.value());
+    registerUserModifiedMimeTypes(mimeTypes);
 }
 
 // MimeTypeSettingsPage
@@ -792,8 +798,9 @@ QStringList MimeTypeSettings::keywords() const
 void MimeTypeSettings::restoreSettings()
 {
     MimeTypeSettingsPrivate::UserMimeTypeHash mimetypes
-            = MimeTypeSettingsPrivate::readUserModifiedMimeTypes();
-    MimeTypeSettingsPrivate::applyUserModifiedMimeTypes(mimetypes);
+        = MimeTypeSettingsPrivate::readUserModifiedMimeTypes();
+    MimeTypeSettingsPrivate::m_userModifiedMimeTypes = mimetypes;
+    Utils::addMimeInitializer([mimetypes] { registerUserModifiedMimeTypes(mimetypes); });
 }
 
 QWidget *MimeEditorDelegate::createEditor(QWidget *parent,

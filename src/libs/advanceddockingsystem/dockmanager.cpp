@@ -21,6 +21,7 @@
 #include <utils/algorithm.h>
 #include <utils/fileutils.h>
 #include <utils/qtcassert.h>
+#include <utils/qtcsettings.h>
 
 #include <algorithm>
 #include <iostream>
@@ -39,7 +40,6 @@
 #include <QMainWindow>
 #include <QMap>
 #include <QMenu>
-#include <QMessageBox>
 #include <QSettings>
 #include <QVariant>
 #include <QWindow>
@@ -91,7 +91,7 @@ public:
     QList<Workspace> m_workspaces;
     Workspace m_workspace;
 
-    QSettings *m_settings = nullptr;
+    QtcSettings *m_settings = nullptr;
     bool m_modeChangeState = false;
     bool m_workspaceOrderDirty = false;
 
@@ -440,7 +440,7 @@ int DockManager::startDragDistance()
     return static_cast<int>(QApplication::startDragDistance() * 1.5);
 }
 
-void DockManager::setSettings(QSettings *settings)
+void DockManager::setSettings(QtcSettings *settings)
 {
     d->m_settings = settings;
 }
@@ -714,7 +714,8 @@ bool DockManager::eventFilter(QObject *obj, QEvent *event)
         QWindowStateChangeEvent *ev = static_cast<QWindowStateChangeEvent *>(event);
         if (ev->oldState().testFlag(Qt::WindowMinimized)) {
             d->m_isLeavingMinimized = true;
-            QMetaObject::invokeMethod(this, "endLeavingMinimizedState", Qt::QueuedConnection);
+            QMetaObject::invokeMethod(
+                this, [this] { endLeavingMinimizedState(); }, Qt::QueuedConnection);
         }
     }
     return Super::eventFilter(obj, event);

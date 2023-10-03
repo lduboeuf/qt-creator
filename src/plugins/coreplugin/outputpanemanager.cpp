@@ -103,6 +103,63 @@ QList<QWidget *> IOutputPane::toolBarWidgets() const
     return widgets << m_zoomInButton << m_zoomOutButton;
 }
 
+/*!
+    Returns the ID of the output pane.
+*/
+Id IOutputPane::id() const
+{
+    return m_id;
+}
+
+/*!
+    Sets the ID of the output pane to \a id.
+    This is used for persisting the visibility state.
+*/
+void IOutputPane::setId(const Utils::Id &id)
+{
+    m_id = id;
+}
+
+/*!
+    Returns the translated display name of the output pane.
+*/
+QString IOutputPane::displayName() const
+{
+    return m_displayName;
+}
+
+/*!
+    Determines the position of the output pane on the status bar and the
+    default visibility.
+    \sa setPriorityInStatusBar()
+*/
+int IOutputPane::priorityInStatusBar() const
+{
+    return m_priority;
+}
+
+/*!
+    Sets the position of the output pane on the status bar and the default
+    visibility to \a priority.
+    \list
+        \li higher numbers are further to the front
+        \li >= 0 are shown in status bar by default
+        \li < 0 are not shown in status bar by default
+    \endlist
+*/
+void IOutputPane::setPriorityInStatusBar(int priority)
+{
+    m_priority = priority;
+}
+
+/*!
+    Sets the translated display name of the output pane to \a name.
+*/
+void IOutputPane::setDisplayName(const QString &name)
+{
+    m_displayName = name;
+}
+
 void IOutputPane::visibilityChanged(bool /*visible*/)
 {
 }
@@ -465,9 +522,7 @@ void OutputPaneManager::initialize()
 
         minTitleWidth = qMax(minTitleWidth, titleFm.horizontalAdvance(outPane->displayName()));
 
-        QString suffix = outPane->displayName().simplified();
-        suffix.remove(QLatin1Char(' '));
-        data.id = baseId.withSuffix(suffix);
+        data.id = baseId.withSuffix(outPane->id().toString());
         data.action = new QAction(outPane->displayName(), m_instance);
         Command *cmd = ActionManager::registerAction(data.action, data.id);
 
@@ -478,6 +533,9 @@ void OutputPaneManager::initialize()
                                                  outPane->displayName(),
                                                  cmd->action());
         data.button = button;
+        connect(button, &OutputPaneToggleButton::contextMenuRequested, m_instance, [] {
+            m_instance->popupMenu();
+        });
 
         connect(outPane, &IOutputPane::flashButton, button, [button] { button->flash(); });
         connect(outPane,
@@ -491,7 +549,7 @@ void OutputPaneManager::initialize()
             m_instance->buttonTriggered(i);
         });
 
-        bool visible = outPane->priorityInStatusBar() != -1;
+        const bool visible = outPane->priorityInStatusBar() >= 0;
         data.button->setVisible(visible);
 
         connect(data.action, &QAction::triggered, m_instance, [i] {
@@ -507,7 +565,7 @@ void OutputPaneManager::initialize()
         m_instance->m_titleLabel->setText(g_outputPanes[currentIdx].pane->displayName());
     m_instance->m_buttonsWidget->layout()->addWidget(m_instance->m_manageButton);
     connect(m_instance->m_manageButton,
-            &QAbstractButton::clicked,
+            &OutputPaneManageButton::menuRequested,
             m_instance,
             &OutputPaneManager::popupMenu);
 
@@ -570,23 +628,23 @@ void OutputPaneManager::buttonTriggered(int idx)
 
 void OutputPaneManager::readSettings()
 {
-    QSettings *settings = ICore::settings();
-    int num = settings->beginReadArray(QLatin1String(outputPaneSettingsKeyC));
+    QtcSettings *settings = ICore::settings();
+    int num = settings->beginReadArray(outputPaneSettingsKeyC);
     for (int i = 0; i < num; ++i) {
         settings->setArrayIndex(i);
-        Id id = Id::fromSetting(settings->value(QLatin1String(outputPaneIdKeyC)));
+        Id id = Id::fromSetting(settings->value(outputPaneIdKeyC));
         const int idx = Utils::indexOf(g_outputPanes, Utils::equal(&OutputPaneData::id, id));
         if (idx < 0) // happens for e.g. disabled plugins (with outputpanes) that were loaded before
             continue;
-        const bool visible = settings->value(QLatin1String(outputPaneVisibleKeyC)).toBool();
+        const bool visible = settings->value(outputPaneVisibleKeyC).toBool();
         g_outputPanes[idx].button->setVisible(visible);
     }
     settings->endArray();
 
     m_outputPaneHeightSetting
-        = settings->value(QLatin1String("OutputPanePlaceHolder/Height"), 0).toInt();
+        = settings->value("OutputPanePlaceHolder/Height", 0).toInt();
     const int currentIdx
-        = settings->value(QLatin1String("OutputPanePlaceHolder/CurrentIndex"), 0).toInt();
+        = settings->value("OutputPanePlaceHolder/CurrentIndex", 0).toInt();
     if (QTC_GUARD(currentIdx >= 0 && currentIdx < g_outputPanes.size()))
         setCurrentIndex(currentIdx);
 }
@@ -716,42 +774,57 @@ void OutputPaneManager::popupMenu()
         QAction *act = menu.addAction(data.pane->displayName());
         act->setCheckable(true);
         act->setChecked(data.button->isPaneVisible());
-        act->setData(idx);
+        connect(act, &QAction::triggered, this, [this, data, idx] {
+            if (data.button->isPaneVisible()) {
+                data.pane->visibilityChanged(false);
+                data.button->setChecked(false);
+                data.button->hide();
+            } else {
+                showPage(idx, IOutputPane::ModeSwitch);
+            }
+        });
         ++idx;
     }
-    QAction *result = menu.exec(QCursor::pos());
-    if (!result)
-        return;
-    idx = result->data().toInt();
-    QTC_ASSERT(idx >= 0 && idx < g_outputPanes.size(), return);
-    OutputPaneData &data = g_outputPanes[idx];
-    if (data.button->isPaneVisible()) {
-        data.pane->visibilityChanged(false);
-        data.button->setChecked(false);
-        data.button->hide();
-    } else {
-        showPage(idx, IOutputPane::ModeSwitch);
-    }
+
+    menu.addSeparator();
+    QAction *reset = menu.addAction(Tr::tr("Reset to Default"));
+    connect(reset, &QAction::triggered, this, [this] {
+        for (int i = 0; i < g_outputPanes.size(); ++i) {
+            OutputPaneData &data = g_outputPanes[i];
+            const bool buttonVisible = data.pane->priorityInStatusBar() >= 0;
+            const bool paneVisible = currentIndex() == i
+                                     && OutputPanePlaceHolder::isCurrentVisible();
+            if (buttonVisible) {
+                data.button->setChecked(paneVisible);
+                data.button->setVisible(true);
+            } else {
+                data.button->setChecked(false);
+                data.button->hide();
+            }
+        }
+    });
+
+    menu.exec(QCursor::pos());
 }
 
 void OutputPaneManager::saveSettings() const
 {
-    QSettings *settings = ICore::settings();
+    QtcSettings *settings = ICore::settings();
     const int n = g_outputPanes.size();
-    settings->beginWriteArray(QLatin1String(outputPaneSettingsKeyC), n);
+    settings->beginWriteArray(outputPaneSettingsKeyC, n);
     for (int i = 0; i < n; ++i) {
         const OutputPaneData &data = g_outputPanes.at(i);
         settings->setArrayIndex(i);
-        settings->setValue(QLatin1String(outputPaneIdKeyC), data.id.toSetting());
-        settings->setValue(QLatin1String(outputPaneVisibleKeyC), data.button->isPaneVisible());
+        settings->setValue(outputPaneIdKeyC, data.id.toSetting());
+        settings->setValue(outputPaneVisibleKeyC, data.button->isPaneVisible());
     }
     settings->endArray();
     int heightSetting = m_outputPaneHeightSetting;
     // update if possible
     if (OutputPanePlaceHolder *curr = OutputPanePlaceHolder::getCurrent())
         heightSetting = curr->nonMaximizedSize();
-    settings->setValue(QLatin1String("OutputPanePlaceHolder/Height"), heightSetting);
-    settings->setValue(QLatin1String("OutputPanePlaceHolder/CurrentIndex"), currentIndex());
+    settings->setValue("OutputPanePlaceHolder/Height", heightSetting);
+    settings->setValue("OutputPanePlaceHolder/CurrentIndex", currentIndex());
 }
 
 void OutputPaneManager::clearPage()
@@ -934,6 +1007,10 @@ bool OutputPaneToggleButton::isPaneVisible() const
     return isVisibleTo(parentWidget());
 }
 
+void OutputPaneToggleButton::contextMenuEvent(QContextMenuEvent *)
+{
+    emit contextMenuRequested();
+}
 
 ///////////////////////////////////////////////////////////////////////
 //
@@ -946,6 +1023,7 @@ OutputPaneManageButton::OutputPaneManageButton()
     setFocusPolicy(Qt::NoFocus);
     setCheckable(true);
     setFixedWidth(StyleHelper::toolbarStyle() == Utils::StyleHelper::ToolbarStyleCompact ? 17 : 21);
+    connect(this, &QToolButton::clicked, this, &OutputPaneManageButton::menuRequested);
 }
 
 void OutputPaneManageButton::paintEvent(QPaintEvent*)
@@ -965,6 +1043,11 @@ void OutputPaneManageButton::paintEvent(QPaintEvent*)
     s->drawPrimitive(QStyle::PE_IndicatorArrowUp, &arrowOpt, &p, this);
     arrowOpt.rect.translate(0, 6);
     s->drawPrimitive(QStyle::PE_IndicatorArrowDown, &arrowOpt, &p, this);
+}
+
+void OutputPaneManageButton::contextMenuEvent(QContextMenuEvent *)
+{
+    emit menuRequested();
 }
 
 BadgeLabel::BadgeLabel()

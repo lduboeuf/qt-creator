@@ -14,6 +14,7 @@
 #include <coreplugin/icore.h>
 #include <coreplugin/progressmanager/progressmanager.h>
 
+#include <projectexplorer/kitoptionspage.h>
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/projectexplorericons.h>
 #include <projectexplorer/toolchain.h>
@@ -41,7 +42,6 @@
 #include <QLabel>
 #include <QMessageBox>
 #include <QPushButton>
-#include <QSortFilterProxyModel>
 #include <QTextBrowser>
 #include <QTreeView>
 
@@ -197,7 +197,7 @@ private:
     void updateVersionItem(QtVersionItem *item);
 
     TreeModel<TreeItem, TreeItem, QtVersionItem> *m_model;
-    QSortFilterProxyModel *m_filterModel;
+    KitSettingsSortModel *m_filterModel;
     TreeItem *m_autoItem;
     TreeItem *m_manualItem;
 
@@ -314,9 +314,10 @@ QtOptionsPageWidget::QtOptionsPageWidget()
     m_model->rootItem()->appendChild(m_autoItem);
     m_model->rootItem()->appendChild(m_manualItem);
 
-    m_filterModel = new QSortFilterProxyModel(this);
+    m_filterModel = new KitSettingsSortModel(this);
+    m_filterModel->setSortedCategories({ProjectExplorer::Constants::msgAutoDetected(),
+                                        ProjectExplorer::Constants::msgManual()});
     m_filterModel->setSourceModel(m_model);
-    m_filterModel->setSortCaseSensitivity(Qt::CaseInsensitive);
 
     m_qtdirList->setModel(m_filterModel);
     m_qtdirList->setSortingEnabled(true);
@@ -601,7 +602,7 @@ void QtOptionsPageWidget::updateQtVersions(const QList<int> &additions, const QL
 
     // Add changed/added items:
     for (int a : std::as_const(toAdd)) {
-        QtVersion *version = QtVersionManager::version(a)->clone();
+        QtVersion *version = QtVersionManager::version(a)->clone(true);
         auto *item = new QtVersionItem(version);
 
         // Insert in the right place:
@@ -822,7 +823,7 @@ static QString qtVersionsFile(const QString &baseDir)
 static std::optional<FilePath> currentlyLinkedQtDir(bool *hasInstallSettings)
 {
     const QString installSettingsFilePath = settingsFile(Core::ICore::resourcePath().toString());
-    const bool installSettingsExist = QFile::exists(installSettingsFilePath);
+    const bool installSettingsExist = QFileInfo::exists(installSettingsFilePath);
     if (hasInstallSettings)
         *hasInstallSettings = installSettingsExist;
     if (installSettingsExist) {
@@ -934,8 +935,8 @@ static std::optional<FilePath> settingsDirForQtDir(const FilePath &baseDirectory
         return qtDir / dir;
     });
     const FilePath validDir = Utils::findOrDefault(dirsToCheck, [baseDirectory](const FilePath &dir) {
-        return QFile::exists(settingsFile(baseDirectory.resolvePath(dir).toString()))
-               || QFile::exists(qtVersionsFile(baseDirectory.resolvePath(dir).toString()));
+        return QFileInfo::exists(settingsFile(baseDirectory.resolvePath(dir).toString()))
+               || QFileInfo::exists(qtVersionsFile(baseDirectory.resolvePath(dir).toString()));
     });
     if (!validDir.isEmpty())
         return validDir;

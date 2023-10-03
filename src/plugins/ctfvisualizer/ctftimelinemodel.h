@@ -28,7 +28,9 @@ class CtfTimelineModel : public Timeline::TimelineModel
 
 public:
     explicit CtfTimelineModel(Timeline::TimelineModelAggregator *parent,
-                              CtfTraceManager *traceManager, int tid, int pid);
+                              CtfTraceManager *traceManager,
+                              const QString &tid,
+                              const QString &pid);
 
     QRgb color(int index) const override;
     QVariantList labels() const override;
@@ -44,7 +46,7 @@ public:
 
     void finalize(double traceBegin, double traceEnd, const QString &processName, const QString &threadName);
 
-    int tid() const;
+    QString tid() const;
     QString eventTitle(int index) const;
 
 signals:
@@ -65,13 +67,13 @@ private:
 protected:
     CtfTraceManager *const m_traceManager;
 
-    int m_threadId;
+    QString m_threadId;
     QString m_threadName;
-    int m_processId;
+    QString m_processId;
     QString m_processName;
 
     int m_maxStackSize = 0;
-    QVector<int> m_nestingLevels;
+    QVector<int> m_rows;
     QVector<QMap<int, QPair<QString, QString>>> m_details;
     QSet<int> m_handledTypeIds;
     QStack<int> m_openEventIds;

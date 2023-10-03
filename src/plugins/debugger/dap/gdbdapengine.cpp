@@ -17,12 +17,10 @@
 
 #include <QDebug>
 #include <QLocalSocket>
-#include <QLoggingCategory>
 #include <QVersionNumber>
 
 using namespace Core;
 using namespace Utils;
-static Q_LOGGING_CATEGORY(dapEngineLog, "qtc.dbg.dapengine", QtWarningMsg)
 
 namespace Debugger::Internal {
 
@@ -63,7 +61,11 @@ public:
     }
 
     bool isRunning() const override { return m_proc.isRunning(); }
-    void writeRaw(const QByteArray &data) override { m_proc.writeRaw(data); }
+    void writeRaw(const QByteArray &data) override
+    {
+        if (m_proc.state() == QProcess::Running)
+            m_proc.writeRaw(data);
+    }
     void kill() override { m_proc.kill(); }
     QByteArray readAllStandardOutput() override { return m_proc.readAllStandardOutput().toUtf8(); }
     QString readAllStandardError() override { return m_proc.readAllStandardError(); }
@@ -81,6 +83,22 @@ private:
     const CommandLine m_cmd;
 };
 
+class GdbDapClient : public DapClient
+{
+public:
+    GdbDapClient(IDataProvider *provider, QObject *parent = nullptr)
+        : DapClient(provider, parent)
+    {}
+
+private:
+    const QLoggingCategory &logCategory() override
+    {
+        static const QLoggingCategory logCategory = QLoggingCategory("qtc.dbg.dapengine.gdb",
+                                                                     QtWarningMsg);
+        return logCategory;
+    }
+};
+
 GdbDapEngine::GdbDapEngine()
     : DapEngine()
 {
@@ -89,12 +107,42 @@ GdbDapEngine::GdbDapEngine()
     setDebuggerType("DAP");
 }
 
+void GdbDapEngine::handleDapInitialize()
+{
+    if (!isLocalAttachEngine()) {
+        DapEngine::handleDapInitialize();
+        return;
+    }
+
+    QTC_ASSERT(state() == EngineRunRequested, qCDebug(logCategory()) << state());
+    m_dapClient->postRequest("attach", QJsonObject{{"__restart", ""}});
+    qCDebug(logCategory()) << "handleDapAttach";
+}
+
+bool GdbDapEngine::isLocalAttachEngine() const
+{
+    return runParameters().startMode == AttachToLocalProcess;
+}
+
+void GdbDapEngine::handleDapConfigurationDone()
+{
+    if (!isLocalAttachEngine()) {
+        DapEngine::handleDapConfigurationDone();
+        return;
+    }
+
+    notifyEngineRunAndInferiorStopOk();
+}
+
 void GdbDapEngine::setupEngine()
 {
-    QTC_ASSERT(state() == EngineSetupRequested, qCDebug(dapEngineLog) << state());
+    QTC_ASSERT(state() == EngineSetupRequested, qCDebug(logCategory()) << state());
 
     const DebuggerRunParameters &rp = runParameters();
-    const CommandLine cmd{rp.debugger.command.executable(), {"-i", "dap"}};
+    CommandLine cmd{rp.debugger.command.executable(), {"-i", "dap"}};
+
+    if (isLocalAttachEngine())
+        cmd.addArgs({"-p", QString::number(rp.attachPID.pid())});
 
     QVersionNumber oldestVersion(14, 0, 50);
     QVersionNumber version = QVersionNumber::fromString(rp.version);
@@ -107,12 +155,17 @@ void GdbDapEngine::setupEngine()
     }
 
     IDataProvider *dataProvider =  new ProcessDataProvider(rp, cmd, this);
-    m_dapClient = new DapClient(dataProvider, this);
+    m_dapClient = new GdbDapClient(dataProvider, this);
 
     connectDataGeneratorSignals();
     m_dapClient->dataProvider()->start();
+}
 
-    notifyEngineSetupOk();
+const QLoggingCategory &GdbDapEngine::logCategory()
+{
+    static const QLoggingCategory logCategory = QLoggingCategory("qtc.dbg.dapengine.gdb",
+                                                                 QtWarningMsg);
+    return logCategory;
 }
 
 } // namespace Debugger::Internal

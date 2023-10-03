@@ -402,6 +402,9 @@ ClangdClient::ClangdClient(Project *project, const Utils::FilePath &jsonDbDir, c
     setCompletionAssistProvider(new ClangdCompletionAssistProvider(this));
     setQuickFixAssistProvider(new ClangdQuickFixProvider(this));
     symbolSupport().setLimitRenamingToProjects(true);
+    symbolSupport().setRenameResultsEnhancer([](const SearchResultItems &symbolOccurrencesInCode) {
+        return CppEditor::symbolOccurrencesInDeclarationComments(symbolOccurrencesInCode);
+    });
     if (!project) {
         QJsonObject initOptions;
         const Utils::FilePath includeDir
@@ -629,13 +632,14 @@ void ClangdClient::handleDiagnostics(const PublishDiagnosticsParams &params)
     const int docVersion = documentVersion(uri);
     if (params.version().value_or(docVersion) != docVersion)
         return;
+    QList<CodeAction> allCodeActions;
     for (const Diagnostic &diagnostic : params.diagnostics()) {
         const ClangdDiagnostic clangdDiagnostic(diagnostic);
         auto codeActions = clangdDiagnostic.codeActions();
         if (codeActions && !codeActions->isEmpty()) {
             for (CodeAction &action : *codeActions)
                 action.setDiagnostics({diagnostic});
-            LanguageClient::updateCodeActionRefactoringMarker(this, *codeActions, uri);
+            allCodeActions << *codeActions;
         } else {
             // We know that there's only one kind of diagnostic for which clangd has
             // a quickfix tweak, so let's not be wasteful.
@@ -645,6 +649,8 @@ void ClangdClient::handleDiagnostics(const PublishDiagnosticsParams &params)
                 requestCodeActions(uri, diagnostic);
         }
     }
+    if (!allCodeActions.isEmpty())
+        LanguageClient::updateCodeActionRefactoringMarker(this, allCodeActions, uri);
 }
 
 void ClangdClient::handleDocumentOpened(TextDocument *doc)
@@ -750,6 +756,13 @@ bool ClangdClient::fileBelongsToProject(const Utils::FilePath &filePath) const
         return ProjectManager::projectForFile(filePath);
     }
     return Client::fileBelongsToProject(filePath);
+}
+
+QList<Text::Range> ClangdClient::additionalDocumentHighlights(
+    TextEditorWidget *editorWidget, const QTextCursor &cursor)
+{
+    return CppEditor::symbolOccurrencesInDeclarationComments(
+        qobject_cast<CppEditor::CppEditorWidget *>(editorWidget), cursor);
 }
 
 RefactoringChangesData *ClangdClient::createRefactoringChangesBackend() const
@@ -1056,9 +1069,11 @@ void ClangdClient::switchHeaderSource(const Utils::FilePath &filePath, bool inNe
     sendMessage(req);
 }
 
-void ClangdClient::findLocalUsages(TextDocument *document, const QTextCursor &cursor,
-        CppEditor::RenameCallback &&callback)
+void ClangdClient::findLocalUsages(CppEditor::CppEditorWidget *editorWidget,
+                                   const QTextCursor &cursor, CppEditor::RenameCallback &&callback)
 {
+    QTC_ASSERT(editorWidget, return);
+    TextDocument * const document = editorWidget->textDocument();
     QTC_ASSERT(documentOpen(document), openDocument(document));
 
     qCDebug(clangdLog) << "local references requested" << document->filePath()
@@ -1076,7 +1091,7 @@ void ClangdClient::findLocalUsages(TextDocument *document, const QTextCursor &cu
         return;
     }
 
-    d->findLocalRefs = new ClangdFindLocalReferences(this, document, cursor, callback);
+    d->findLocalRefs = new ClangdFindLocalReferences(this, editorWidget, cursor, callback);
     connect(d->findLocalRefs, &ClangdFindLocalReferences::done, this, [this] {
         d->findLocalRefs->deleteLater();
         d->findLocalRefs = nullptr;

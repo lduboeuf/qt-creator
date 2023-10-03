@@ -283,6 +283,10 @@ static VcsOutputWindowPrivate *d = nullptr;
 
 VcsOutputWindow::VcsOutputWindow()
 {
+    setId("VersionControl");
+    setDisplayName(Tr::tr("Version Control"));
+    setPriorityInStatusBar(-20);
+
     d = new VcsOutputWindowPrivate;
     Q_ASSERT(d->passwordRegExp.isValid());
     m_instance = this;
@@ -325,16 +329,6 @@ QWidget *VcsOutputWindow::outputWidget(QWidget *parent)
     if (parent != d->widget.parent())
         d->widget.setParent(parent);
     return &d->widget;
-}
-
-QString VcsOutputWindow::displayName() const
-{
-    return Tr::tr("Version Control");
-}
-
-int VcsOutputWindow::priorityInStatusBar() const
-{
-    return -1;
 }
 
 void VcsOutputWindow::clearContents()

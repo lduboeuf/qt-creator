@@ -13,8 +13,6 @@
 using namespace Core;
 using namespace Utils;
 
-static Q_LOGGING_CATEGORY(dapEngineLog, "qtc.dbg.dapengine", QtWarningMsg);
-
 namespace Debugger::Internal {
 
 DapClient::DapClient(IDataProvider *dataProvider, QObject *parent)
@@ -39,19 +37,18 @@ DapClient::~DapClient() = default;
 
 void DapClient::postRequest(const QString &command, const QJsonObject &arguments)
 {
+    static int seq = 1;
+
     QJsonObject ob = {
         {"command", command},
         {"type", "request"},
+        {"seq", seq++},
         {"arguments", arguments}
     };
 
-    static int seq = 1;
-    QJsonObject obseq = ob;
-    obseq.insert("seq", seq++);
-
-    const QByteArray data = QJsonDocument(obseq).toJson(QJsonDocument::Compact);
+    const QByteArray data = QJsonDocument(ob).toJson(QJsonDocument::Compact);
     const QByteArray msg = "Content-Length: " + QByteArray::number(data.size()) + "\r\n\r\n" + data;
-    qCDebug(dapEngineLog) << msg;
+    qCDebug(logCategory()) << msg;
 
     m_dataProvider->writeRaw(msg);
 }
@@ -65,6 +62,12 @@ void DapClient::sendLaunch(const Utils::FilePath &executable)
 {
     postRequest("launch",
                 QJsonObject{{"noDebug", false}, {"program", executable.path()}, {"__restart", ""}});
+}
+
+void DapClient::sendAttach()
+{
+    postRequest("attach",
+                QJsonObject{{"__restart", ""}});
 }
 
 void DapClient::sendConfigurationDone()
@@ -93,7 +96,6 @@ void DapClient::sendPause()
     postRequest("pause");
 }
 
-
 void DapClient::sendStepIn(int threadId)
 {
     QTC_ASSERT(threadId != -1, return);
@@ -112,11 +114,19 @@ void DapClient::sendStepOver(int threadId)
     postRequest("next", QJsonObject{{"threadId", threadId}});
 }
 
+void DapClient::evaluateVariable(const QString &expression, int frameId)
+{
+    postRequest("evaluate",
+                QJsonObject{{"expression", expression},
+                            {"frameId", frameId},
+                            {"context", "variables"}});
+}
+
 void DapClient::stackTrace(int threadId)
 {
     QTC_ASSERT(threadId != -1, return);
     postRequest("stackTrace",
-                      QJsonObject{{"threadId", threadId}, {"startFrame", 0}, {"levels", 10}});
+                QJsonObject{{"threadId", threadId}, {"startFrame", 0}, {"levels", 10}});
 }
 
 void DapClient::scopes(int frameId)
@@ -137,15 +147,15 @@ void DapClient::variables(int variablesReference)
 void DapClient::setBreakpoints(const QJsonArray &breakpoints, const FilePath &fileName)
 {
     postRequest("setBreakpoints",
-                      QJsonObject{{"source", QJsonObject{{"path", fileName.path()}}},
-                                  {"breakpoints", breakpoints}});
+                QJsonObject{{"source", QJsonObject{{"path", fileName.path()}}},
+                            {"breakpoints", breakpoints}});
 }
 
 void DapClient::readOutput()
 {
     m_inbuffer.append(m_dataProvider->readAllStandardOutput());
 
-    qCDebug(dapEngineLog) << m_inbuffer;
+    qCDebug(logCategory()) << m_inbuffer;
 
     while (true) {
         // Something like
@@ -185,12 +195,14 @@ void DapClient::emitSignals(const QJsonDocument &doc)
     const QJsonValue t = ob.value("type");
     const QString type = t.toString();
 
-    qCDebug(dapEngineLog) << "dap response" << ob;
+    qCDebug(logCategory()) << "dap response" << ob;
 
     if (type == "response") {
         DapResponseType type = DapResponseType::Unknown;
         const QString command = ob.value("command").toString();
-        if (command == "configurationDone") {
+        if (command == "initialize") {
+            type = DapResponseType::Initialize;
+        } else if (command == "configurationDone") {
             type = DapResponseType::ConfigurationDone;
         } else if (command == "continue") {
             type = DapResponseType::Continue;
@@ -208,6 +220,10 @@ void DapClient::emitSignals(const QJsonDocument &doc)
             type = DapResponseType::StepOver;
         } else if (command == "threads") {
             type = DapResponseType::DapThreads;
+        } else if (command == "pause") {
+            type = DapResponseType::Pause;
+        } else if (command == "evaluate") {
+            type = DapResponseType::Evaluate;
         }
         emit responseReady(type, ob);
         return;

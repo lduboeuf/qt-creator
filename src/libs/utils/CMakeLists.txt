@@ -60,7 +60,6 @@ add_qtc_library(Utils
     filesystemwatcher.cpp filesystemwatcher.h
     fileutils.cpp fileutils.h
     filewizardpage.cpp filewizardpage.h
-    fixedsizeclicklabel.cpp fixedsizeclicklabel.h
     flowlayout.cpp flowlayout.h
     fsengine/fsengine.cpp fsengine/fsengine.h
     fsengine/fileiconprovider.cpp fsengine/fileiconprovider.h
@@ -75,6 +74,7 @@ add_qtc_library(Utils
     hostosinfo.cpp hostosinfo.h
     htmldocextractor.cpp htmldocextractor.h
     icon.cpp icon.h
+    iconbutton.cpp iconbutton.h
     id.cpp id.h
     indexedcontainerproxyconstiterator.h
     infobar.cpp infobar.h
@@ -117,6 +117,7 @@ add_qtc_library(Utils
     passworddialog.cpp passworddialog.h
     pathchooser.cpp pathchooser.h
     pathlisteditor.cpp pathlisteditor.h
+    persistentcachestore.cpp persistentcachestore.h
     persistentsettings.cpp persistentsettings.h
     pointeralgorithm.h
     port.cpp port.h
@@ -146,7 +147,6 @@ add_qtc_library(Utils
     set_algorithm.h
     settingsaccessor.cpp settingsaccessor.h
     settingsselector.cpp settingsselector.h
-    settingsutils.h
     singleton.cpp singleton.h
     sizedarray.h
     smallstring.h
@@ -274,6 +274,11 @@ extend_qtc_library(Utils
           fsengine/fsenginehandler.cpp
           fsengine/fsenginehandler.h
           fsengine/filepathinfocache.h
+)
+
+extend_qtc_library(Utils
+  CONDITION TARGET Nanotrace
+  DEPENDS Nanotrace
 )
 
 if (WIN32)

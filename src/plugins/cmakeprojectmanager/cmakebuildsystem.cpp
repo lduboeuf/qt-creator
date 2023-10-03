@@ -201,7 +201,8 @@ void CMakeBuildSystem::triggerParsing()
     m_reader.parse(reparseParameters & REPARSE_FORCE_CMAKE_RUN,
                    reparseParameters & REPARSE_FORCE_INITIAL_CONFIGURATION,
                    reparseParameters & REPARSE_FORCE_EXTRA_CONFIGURATION,
-                   (reparseParameters & REPARSE_DEBUG) && isDebuggable);
+                   (reparseParameters & REPARSE_DEBUG) && isDebuggable,
+                   reparseParameters & REPARSE_PROFILING);
 }
 
 void CMakeBuildSystem::requestDebugging()
@@ -285,6 +286,8 @@ bool CMakeBuildSystem::addFiles(Node *context, const FilePaths &filePaths, FileP
         const int targetDefinitionLine = target.backtrace.last().line;
 
         // Have a fresh look at the CMake file, not relying on a cached value
+        Core::DocumentManager::saveModifiedDocumentSilently(
+            Core::DocumentModel::documentForFilePath(targetCMakeFile));
         expected_str<QByteArray> fileContent = targetCMakeFile.fileContents();
         cmListFile cmakeListFile;
         std::string errorString;
@@ -410,6 +413,8 @@ CMakeBuildSystem::projectFileArgumentPosition(const QString &targetName, const Q
     const FilePath targetCMakeFile = target.backtrace.last().path;
 
     // Have a fresh look at the CMake file, not relying on a cached value
+    Core::DocumentManager::saveModifiedDocumentSilently(
+        Core::DocumentModel::documentForFilePath(targetCMakeFile));
     expected_str<QByteArray> fileContent = targetCMakeFile.fileContents();
     cmListFile cmakeListFile;
     std::string errorString;
@@ -670,7 +675,7 @@ FilePaths CMakeBuildSystem::filesGeneratedFrom(const FilePath &sourceFile) const
         const QString generatedFileName = "ui_" + sourceFile.completeBaseName() + ".h";
 
         auto targetNode = this->project()->nodeForFilePath(sourceFile);
-        while (!dynamic_cast<const CMakeTargetNode *>(targetNode))
+        while (targetNode && !dynamic_cast<const CMakeTargetNode *>(targetNode))
             targetNode = targetNode->parentFolderNode();
 
         FilePaths generatedFilePaths;
@@ -800,6 +805,13 @@ void CMakeBuildSystem::runCMakeWithExtraArguments()
 {
     qCDebug(cmakeBuildSystemLog) << "Requesting parse due to \"Rescan Project\" command";
     reparse(REPARSE_FORCE_CMAKE_RUN | REPARSE_FORCE_EXTRA_CONFIGURATION | REPARSE_URGENT);
+}
+
+void CMakeBuildSystem::runCMakeWithProfiling()
+{
+    qCDebug(cmakeBuildSystemLog) << "Requesting parse due \"CMake Profiler\" command";
+    reparse(REPARSE_FORCE_CMAKE_RUN | REPARSE_URGENT | REPARSE_FORCE_EXTRA_CONFIGURATION
+            | REPARSE_PROFILING);
 }
 
 void CMakeBuildSystem::stopCMakeRun()
@@ -1137,6 +1149,7 @@ void CMakeBuildSystem::handleParsingSucceeded(bool restoredFromBackup)
         });
         m_buildTargets += m_reader.takeBuildTargets(errorMessage);
         m_cmakeFiles = m_reader.takeCMakeFileInfos(errorMessage);
+        setupCMakeSymbolsHash();
 
         checkAndReportError(errorMessage);
     }
@@ -1238,6 +1251,37 @@ void CMakeBuildSystem::wireUpConnections()
     if (buildConfiguration()->isActive()) {
         qCDebug(cmakeBuildSystemLog) << "Initial run:";
         reparse(CMakeBuildSystem::REPARSE_DEFAULT);
+    }
+}
+
+void CMakeBuildSystem::setupCMakeSymbolsHash()
+{
+    m_cmakeSymbolsHash.clear();
+
+    m_projectKeywords.functions.clear();
+    m_projectKeywords.variables.clear();
+
+    for (const auto &cmakeFile : std::as_const(m_cmakeFiles)) {
+        for (const auto &func : cmakeFile.cmakeListFile.Functions) {
+            if (func.LowerCaseName() != "function" && func.LowerCaseName() != "macro"
+                && func.LowerCaseName() != "option")
+                continue;
+
+            if (func.Arguments().size() == 0)
+                continue;
+            auto arg = func.Arguments()[0];
+
+            Utils::Link link;
+            link.targetFilePath = cmakeFile.path;
+            link.targetLine = arg.Line;
+            link.targetColumn = arg.Column - 1;
+            m_cmakeSymbolsHash.insert(QString::fromUtf8(arg.Value), link);
+
+            if (func.LowerCaseName() == "option")
+                m_projectKeywords.variables[QString::fromUtf8(arg.Value)] = FilePath();
+            else
+                m_projectKeywords.functions[QString::fromUtf8(arg.Value)] = FilePath();
+        }
     }
 }
 
@@ -1728,11 +1772,6 @@ QList<QPair<Id, QString>> CMakeBuildSystem::generators() const
     for (const CMakeTool::Generator &generator : generators) {
         result << qMakePair(Id::fromSetting(generator.name),
                             Tr::tr("%1 (via cmake)").arg(generator.name));
-        for (const QString &extraGenerator : generator.extraGenerators) {
-            const QString displayName = extraGenerator + " - " + generator.name;
-            result << qMakePair(Id::fromSetting(displayName),
-                                Tr::tr("%1 (via cmake)").arg(displayName));
-        }
     }
     return result;
 }

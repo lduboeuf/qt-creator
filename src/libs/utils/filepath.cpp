@@ -225,7 +225,7 @@ bool FilePath::isRootPath() const
         return true;
     }
 
-    return *this == FilePath::fromString(QDir::rootPath());
+    return *this == HostOsInfo::root();
 }
 
 QString FilePath::encodedHost() const
@@ -749,6 +749,11 @@ FilePath FilePath::withExecutableSuffix() const
     return withNewPath(OsSpecificAspects::withExecutableSuffix(osType(), path()));
 }
 
+FilePath FilePath::withSuffix(const QString &suffix) const
+{
+    return withNewPath(path() + suffix);
+}
+
 static bool startsWithWindowsDriveLetterAndSlash(QStringView path)
 {
     return path.size() > 2 && path[1] == ':' && path[2] == '/' && isWindowsDriveLetter(path[0]);
@@ -986,7 +991,7 @@ const QString &FilePath::specialRootName()
 
 const QString &FilePath::specialRootPath()
 {
-    static const QString rootPath = QDir::rootPath() + u"__qtc_devices__";
+    static const QString rootPath = HostOsInfo::root().path() + u"__qtc_devices__";
     return rootPath;
 }
 
@@ -998,7 +1003,7 @@ const QString &FilePath::specialDeviceRootName()
 
 const QString &FilePath::specialDeviceRootPath()
 {
-    static const QString deviceRootPath =  QDir::rootPath() + u"__qtc_devices__/device";
+    static const QString deviceRootPath = HostOsInfo::root().path() + u"__qtc_devices__/device";
     return deviceRootPath;
 }
 
@@ -2168,6 +2173,7 @@ FileFilter::FileFilter(const QStringList &nameFilters,
       fileFilters(fileFilters),
       iteratorFlags(flags)
 {
+    QTC_CHECK(this->fileFilters != QDir::Filters());
 }
 
 QStringList FileFilter::asFindArguments(const QString &path) const

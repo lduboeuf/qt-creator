@@ -1450,9 +1450,11 @@ void GdbEngine::handleStop2(const GdbMi &data)
 
 void GdbEngine::handleStop3()
 {
-    DebuggerCommand cmd("-thread-info", Discardable);
-    cmd.callback = CB(handleThreadInfo);
-    runCommand(cmd);
+    if (!terminal() || state() != InferiorRunOk) {
+        DebuggerCommand cmd("-thread-info", Discardable);
+        cmd.callback = CB(handleThreadInfo);
+        runCommand(cmd);
+    }
 }
 
 void GdbEngine::handleShowVersion(const DebuggerResponse &response)
@@ -4991,8 +4993,7 @@ void GdbEngine::handleStubAttached(const DebuggerResponse &response, qint64 main
         break;
     case ResultError:
         if (response.data["msg"].data() == "ptrace: Operation not permitted.") {
-            showMessage(msgPtraceError(runParameters().startMode));
-            notifyEngineRunFailed();
+            notifyInferiorSetupFailedHelper(msgPtraceError(runParameters().startMode));
             break;
         }
         showMessage(response.data["msg"].data());

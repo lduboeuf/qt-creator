@@ -49,13 +49,13 @@
 #include "kitfeatureprovider.h"
 #include "kitaspects.h"
 #include "kitmanager.h"
-#include "kitoptionspage.h"
 #include "miniprojecttargetselector.h"
 #include "namedwidget.h"
 #include "parseissuesdialog.h"
 #include "processstep.h"
 #include "project.h"
 #include "projectcommentssettings.h"
+#include "projectexplorerconstants.h"
 #include "projectexplorericons.h"
 #include "projectexplorersettings.h"
 #include "projectexplorertr.h"
@@ -134,6 +134,8 @@
 #include <utils/tooltip/tooltip.h>
 #include <utils/utilsicons.h>
 
+#include <nanotrace/nanotrace.h>
+
 #include <QAction>
 #include <QActionGroup>
 #include <QApplication>
@@ -146,7 +148,6 @@
 #include <QMessageBox>
 #include <QPair>
 #include <QPushButton>
-#include <QSettings>
 #include <QThreadPool>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -516,6 +517,8 @@ public:
 
     void extendFolderNavigationWidgetFactory();
 
+    QString projectFilterString() const;
+
 public:
     QMenu *m_openWithMenu;
     QMenu *m_openTerminalMenu;
@@ -601,7 +604,6 @@ public:
     FilePath m_lastOpenDirectory;
     QPointer<RunConfiguration> m_defaultRunConfiguration;
     QPointer<RunConfiguration> m_delayedRunConfiguration;
-    QString m_projectFilterString;
     MiniProjectTargetSelector * m_targetSelector;
     ProjectExplorerSettings m_projectExplorerSettings;
     QList<CustomParserSettings> m_customParsers;
@@ -622,15 +624,16 @@ public:
     MsvcToolChainFactory m_mscvToolChainFactory;
     ClangClToolChainFactory m_clangClToolChainFactory;
 #else
-    LinuxIccToolChainFactory m_linuxToolChainFactory;
+    GccToolChainFactory m_linuxToolChainFactory{GccToolChain::LinuxIcc};
 #endif
 
 #ifndef Q_OS_MACOS
-    MingwToolChainFactory m_mingwToolChainFactory; // Mingw offers cross-compiling to windows
+    // Mingw offers cross-compiling to windows
+    GccToolChainFactory m_mingwToolChainFactory{GccToolChain::MinGW};
 #endif
 
-    GccToolChainFactory m_gccToolChainFactory;
-    ClangToolChainFactory m_clangToolChainFactory;
+    GccToolChainFactory m_gccToolChainFactory{GccToolChain::RealGcc};
+    GccToolChainFactory m_clangToolChainFactory{GccToolChain::Clang};
     CustomToolChainFactory m_customToolChainFactory;
 
     DesktopDeviceFactory m_desktopDeviceFactory;
@@ -1628,7 +1631,7 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
             dd->updateWelcomePage();
     });
 
-    QSettings *s = ICore::settings();
+    QtcSettings *s = ICore::settings();
     const QStringList fileNames = s->value(Constants::RECENTPROJECTS_FILE_NAMES_KEY).toStringList();
     const QStringList displayNames = s->value(Constants::RECENTPROJECTS_DISPLAY_NAMES_KEY)
                                          .toStringList();
@@ -1703,7 +1706,7 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
     for (int i = 0; i < customParserCount; ++i) {
         CustomParserSettings settings;
         settings.fromMap(storeFromVariant(
-            s->value(Constants::CUSTOM_PARSER_PREFIX_KEY + Key::number(i))));
+            s->value(numberedKey(Constants::CUSTOM_PARSER_PREFIX_KEY, i))));
         dd->m_customParsers << settings;
     }
 
@@ -1968,8 +1971,9 @@ void ProjectExplorerPluginPrivate::loadAction()
     }
 
     FilePath filePath = Utils::FileUtils::getOpenFilePath(ICore::dialogParent(),
-                                                          Tr::tr("Load Project"), dir,
-                                                          dd->m_projectFilterString);
+                                                          Tr::tr("Load Project"),
+                                                          dir,
+                                                          dd->projectFilterString());
     if (filePath.isEmpty())
         return;
 
@@ -2050,10 +2054,6 @@ void ProjectExplorerPlugin::extensionsInitialized()
     JsonWizardFactory::createWizardFactories();
 
     // Register factories for all project managers
-    QStringList allGlobPatterns;
-
-    const QString filterSeparator = QLatin1String(";;");
-    QStringList filterStrings;
 
     dd->m_documentFactory.setOpener([](FilePath filePath) {
         if (filePath.isDir()) {
@@ -2072,9 +2072,6 @@ void ProjectExplorerPlugin::extensionsInitialized()
     for (auto it = dd->m_projectCreators.cbegin(); it != dd->m_projectCreators.cend(); ++it) {
         const QString &mimeType = it.key();
         dd->m_documentFactory.addMimeType(mimeType);
-        MimeType mime = Utils::mimeTypeForName(mimeType);
-        allGlobPatterns.append(mime.globPatterns());
-        filterStrings.append(mime.filterString());
         dd->m_profileMimeTypes += mimeType;
     }
 
@@ -2082,12 +2079,6 @@ void ProjectExplorerPlugin::extensionsInitialized()
     dd->m_taskFileFactory.setOpener([](const FilePath &filePath) {
         return TaskFile::openTasks(filePath);
     });
-
-    QString allProjectsFilter = Tr::tr("All Projects");
-    allProjectsFilter += QLatin1String(" (") + allGlobPatterns.join(QLatin1Char(' '))
-            + QLatin1Char(')');
-    filterStrings.prepend(allProjectsFilter);
-    dd->m_projectFilterString = filterStrings.join(filterSeparator);
 
     BuildManager::extensionsInitialized();
     TaskHub::addCategory({Constants::TASK_CATEGORY_SANITIZER,
@@ -2130,19 +2121,15 @@ void ProjectExplorerPlugin::extensionsInitialized()
 
     // Load devices immediately, as other plugins might want to use them
     DeviceManager::instance()->load();
-
-    // delay restoring kits until UI is shown for improved perceived startup performance
-    QTimer::singleShot(0, this, &ProjectExplorerPlugin::restoreKits);
 }
 
-void ProjectExplorerPlugin::restoreKits()
+bool ProjectExplorerPlugin::delayedInitialize()
 {
+    NANOTRACE_SCOPE("ProjectExplorer", "ProjectExplorerPlugin::restoreKits");
     ExtraAbi::load(); // Load this before Toolchains!
     ToolChainManager::restoreToolChains();
     KitManager::restoreKits();
-    // restoring startup session is supposed to be done as a result of ICore::coreOpened,
-    // and that is supposed to happen after restoring kits:
-    QTC_CHECK(!SessionManager::isStartupSessionRestored());
+    return true;
 }
 
 void ProjectExplorerPluginPrivate::updateRunWithoutDeployMenu()
@@ -2216,7 +2203,7 @@ void ProjectExplorerPluginPrivate::savePersistentSettings()
     }
 
     QtcSettings *s = ICore::settings();
-    s->remove(QLatin1String("ProjectExplorer/RecentProjects/Files"));
+    s->remove("ProjectExplorer/RecentProjects/Files");
 
     QStringList fileNames;
     QStringList displayNames;
@@ -2278,7 +2265,7 @@ void ProjectExplorerPluginPrivate::savePersistentSettings()
 
     s->setValueWithDefault(Constants::CUSTOM_PARSER_COUNT_KEY, int(dd->m_customParsers.count()), 0);
     for (int i = 0; i < dd->m_customParsers.count(); ++i) {
-        s->setValue(Constants::CUSTOM_PARSER_PREFIX_KEY + Key::number(i),
+        s->setValue(numberedKey(Constants::CUSTOM_PARSER_PREFIX_KEY, i),
                     variantFromStore(dd->m_customParsers.at(i).toMap()));
     }
 }
@@ -2387,8 +2374,7 @@ ProjectExplorerPlugin::OpenProjectResult ProjectExplorerPlugin::openProjects(con
     dd->updateActions();
 
     const bool switchToProjectsMode = Utils::anyOf(openedPro, &Project::needsConfiguration);
-    const bool switchToEditMode = Utils::allOf(openedPro,
-                                               [](Project *p) { return p->isEditModePreferred(); });
+    const bool switchToEditMode = Utils::allOf(openedPro, &Project::isEditModePreferred);
     if (!openedPro.isEmpty()) {
         if (switchToProjectsMode)
             ModeManager::activateMode(Constants::MODE_SESSION);
@@ -2790,6 +2776,24 @@ void ProjectExplorerPluginPrivate::extendFolderNavigationWidgetFactory()
             });
 }
 
+QString ProjectExplorerPluginPrivate::projectFilterString() const
+{
+    const QString filterSeparator = QLatin1String(";;");
+    QStringList filterStrings;
+    QStringList allGlobPatterns;
+    for (auto it = m_projectCreators.cbegin(); it != m_projectCreators.cend(); ++it) {
+        const QString &mimeType = it.key();
+        MimeType mime = Utils::mimeTypeForName(mimeType);
+        allGlobPatterns.append(mime.globPatterns());
+        filterStrings.append(mime.filterString());
+    }
+    QString allProjectsFilter = Tr::tr("All Projects");
+    allProjectsFilter += QLatin1String(" (") + allGlobPatterns.join(QLatin1Char(' '))
+                         + QLatin1Char(')');
+    filterStrings.prepend(allProjectsFilter);
+    return filterStrings.join(filterSeparator);
+}
+
 void ProjectExplorerPluginPrivate::runProjectContextMenu(RunConfiguration *rc)
 {
     const Node *node = ProjectTree::currentNode();
@@ -2954,7 +2958,7 @@ void ProjectExplorerPlugin::runRunConfiguration(RunConfiguration *rc,
                 ? BuildForRunConfigStatus::Building : BuildForRunConfigStatus::NotBuilding
             : BuildManager::potentiallyBuildForRunConfig(rc);
 
-    if (dd->m_runMode == Constants::CMAKE_DEBUG_RUN_MODE)
+    if (dd->m_runMode == Constants::DAP_CMAKE_DEBUG_RUN_MODE)
         buildStatus = BuildForRunConfigStatus::NotBuilding;
 
     switch (buildStatus) {
@@ -3991,7 +3995,7 @@ void ProjectExplorerPlugin::openOpenProjectDialog()
     const FilePath path = DocumentManager::useProjectsDirectory()
                              ? DocumentManager::projectsDirectory()
                              : FilePath();
-    const FilePaths files = DocumentManager::getOpenFileNames(dd->m_projectFilterString, path);
+    const FilePaths files = DocumentManager::getOpenFileNames(dd->projectFilterString(), path);
     if (!files.isEmpty())
         ICore::openFiles(files, ICore::SwitchMode);
 }

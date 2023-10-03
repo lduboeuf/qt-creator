@@ -32,9 +32,9 @@ public:
     ~CompilerExplorerSettings();
 
     Utils::StringAspect compilerExplorerUrl{this};
-    Utils::TypedAspect<QVariantMap> windowState{this};
+    Utils::TypedAspect<Utils::Store> windowState{this};
 
-    AspectListAspect<std::shared_ptr<SourceSettings>> m_sources{this};
+    Utils::AspectList m_sources{this};
 
     Api::Config apiConfig() const
     {
@@ -59,9 +59,9 @@ public:
     ApiConfigFunction apiConfigFunction() const { return m_apiConfigFunction; }
 
 public:
-    StringSelectionAspect languageId{this};
+    Utils::StringSelectionAspect languageId{this};
     Utils::StringAspect source{this};
-    AspectListAspect<std::shared_ptr<CompilerSettings>> compilers{this};
+    Utils::AspectList compilers{this};
 
 public:
     QString languageExtension() const;
@@ -70,19 +70,20 @@ signals:
     void languagesChanged();
 
 private:
-    void fillLanguageIdModel(StringSelectionAspect::ResultCallback cb);
+    void fillLanguageIdModel(const Utils::StringSelectionAspect::ResultCallback &cb);
 
 private:
     CompilerExplorerSettings *m_parent;
     ApiConfigFunction m_apiConfigFunction;
 };
 
-class CompilerSettings : public Utils::AspectContainer
+class CompilerSettings : public Utils::AspectContainer,
+                         public std::enable_shared_from_this<CompilerSettings>
 {
 public:
     CompilerSettings(const ApiConfigFunction &apiConfigFunction);
 
-    StringSelectionAspect compiler{this};
+    Utils::StringSelectionAspect compiler{this};
 
     Utils::StringAspect compilerOptions{this};
     LibrarySelectionAspect libraries{this};
@@ -97,8 +98,8 @@ public:
     void setLanguageId(const QString &languageId);
 
 private:
-    void fillCompilerModel(StringSelectionAspect::ResultCallback cb);
-    void fillLibraries(LibrarySelectionAspect::ResultCallback cb);
+    void fillCompilerModel(const Utils::StringSelectionAspect::ResultCallback &cb);
+    void fillLibraries(const LibrarySelectionAspect::ResultCallback &cb);
 
     QString m_languageId;
     ApiConfigFunction m_apiConfigFunction;

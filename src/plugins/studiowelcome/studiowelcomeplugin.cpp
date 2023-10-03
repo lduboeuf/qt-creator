@@ -45,6 +45,8 @@
 #include <utils/stringutils.h>
 #include <utils/theme/theme.h>
 
+#include <nanotrace/nanotrace.h>
+
 #include <QAbstractListModel>
 #include <QApplication>
 #include <QDesktopServices>
@@ -73,8 +75,8 @@ namespace Internal {
 
 static bool useNewWelcomePage()
 {
-    QSettings *settings = Core::ICore::settings();
-    const QString newWelcomePageEntry = "QML/Designer/NewWelcomePage"; //entry from qml settings
+    QtcSettings *settings = Core::ICore::settings();
+    const Key newWelcomePageEntry = "QML/Designer/NewWelcomePage"; //entry from qml settings
 
     return settings->value(newWelcomePageEntry, false).toBool();
 }
@@ -264,7 +266,7 @@ public:
 
     Q_INVOKABLE void showHelp()
     {
-        QDesktopServices::openUrl(QUrl("qthelp://org.qt-project.qtcreator/doc/index.html"));
+        QDesktopServices::openUrl(QUrl("qthelp://org.qt-project.qtdesignstudio/doc/index.html"));
     }
 
     Q_INVOKABLE void openExample(const QString &examplePath,
@@ -421,8 +423,11 @@ static QString tags(const FilePath &projectFilePath)
 
 QVariant ProjectModel::data(const QModelIndex &index, int role) const
 {
-    if (index.row() >= ProjectExplorer::ProjectExplorerPlugin::recentProjects().count())
+    if (!index.isValid() ||
+        index.row() >= ProjectExplorer::ProjectExplorerPlugin::recentProjects().count()) {
+
         return {};
+    }
 
     const ProjectExplorer::RecentProjectsEntry data =
             ProjectExplorer::ProjectExplorerPlugin::recentProjects().at(index.row());
@@ -516,15 +521,15 @@ void StudioWelcomePlugin::initialize()
 
 static bool forceDownLoad()
 {
-    const QString lastQDSVersionEntry = "QML/Designer/ForceWelcomePageDownload";
+    const Key lastQDSVersionEntry = "QML/Designer/ForceWelcomePageDownload";
     return Core::ICore::settings()->value(lastQDSVersionEntry, false).toBool();
 }
 
 static bool showSplashScreen()
 {
-    const QString lastQDSVersionEntry = "QML/Designer/lastQDSVersion";
+    const Key lastQDSVersionEntry = "QML/Designer/lastQDSVersion";
 
-    QSettings *settings = Core::ICore::settings();
+    QtcSettings *settings = Core::ICore::settings();
 
     const QString lastQDSVersion = settings->value(lastQDSVersionEntry).toString();
 
@@ -559,6 +564,8 @@ void StudioWelcomePlugin::extensionsInitialized()
 
     if (showSplashScreen()) {
         connect(Core::ICore::instance(), &Core::ICore::coreOpened, this, [this] {
+            NANOTRACE_SCOPE("StudioWelcome",
+                            "StudioWelcomePlugin::extensionsInitialized::coreOpened");
             Core::ModeManager::setModeStyle(Core::ModeManager::Style::Hidden);
             if (Utils::HostOsInfo::isMacHost()) {
                 s_viewWindow = new QQuickView(Core::ICore::mainWindow()->windowHandle());

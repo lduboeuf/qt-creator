@@ -30,12 +30,13 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSet>
-#include <QSettings>
 #include <QSortFilterProxyModel>
 #include <QSpacerItem>
 #include <QStackedLayout>
 #include <QStyle>
 #include <QStyledItemDelegate>
+
+#include <extensionsystem/pluginmanager.h>
 
 const int kInitialWidth = 750;
 const int kInitialHeight = 450;
@@ -488,8 +489,8 @@ SettingsDialog::SettingsDialog(QWidget *parent) :
     connect(m_sortCheckBox, &QAbstractButton::toggled, this, [this](bool checked) {
         m_proxyModel.sort(checked ? 0 : -1);
     });
-    QSettings *settings = ICore::settings();
-    m_sortCheckBox->setChecked(settings->value(QLatin1String(sortKeyC), false).toBool());
+    QtcSettings *settings = ICore::settings();
+    m_sortCheckBox->setChecked(settings->value(sortKeyC, false).toBool());
 
     connect(m_categoryList->selectionModel(), &QItemSelectionModel::currentRowChanged,
             this, &SettingsDialog::currentChanged);
@@ -514,8 +515,8 @@ void SettingsDialog::showPage(const Id pageId)
     // handle the case of "show last page"
     Id initialPageId = pageId;
     if (!initialPageId.isValid()) {
-        QSettings *settings = ICore::settings();
-        initialPageId = Id::fromSetting(settings->value(QLatin1String(pageKeyC)));
+        QtcSettings *settings = ICore::settings();
+        initialPageId = Id::fromSetting(settings->value(pageKeyC));
     }
 
     int initialCategoryIndex = -1;
@@ -750,9 +751,9 @@ void SettingsDialog::apply()
 
 void SettingsDialog::done(int val)
 {
-    QSettings *settings = ICore::settings();
-    settings->setValue(QLatin1String(pageKeyC), m_currentPage.toSetting());
-    settings->setValue(QLatin1String(sortKeyC), m_sortCheckBox->isChecked());
+    QtcSettings *settings = ICore::settings();
+    settings->setValue(pageKeyC, m_currentPage.toSetting());
+    settings->setValue(sortKeyC, m_sortCheckBox->isChecked());
 
     ICore::saveSettings(ICore::SettingsDialogDone); // save all settings
 
@@ -800,6 +801,14 @@ bool SettingsDialog::execDialog()
 
 bool executeSettingsDialog(QWidget *parent, Id initialPage)
 {
+    if (!ExtensionSystem::PluginManager::isInitializationDone()) {
+        QObject::connect(ExtensionSystem::PluginManager::instance(),
+                         &ExtensionSystem::PluginManager::initializationDone,
+                         parent,
+                         [parent, initialPage]() { executeSettingsDialog(parent, initialPage); });
+        return false;
+    }
+
     // Make sure all wizards are there when the user might access the keyboard shortcuts:
     (void) IWizardFactory::allWizardFactories();
 

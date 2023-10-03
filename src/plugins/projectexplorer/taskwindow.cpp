@@ -168,6 +168,10 @@ static QToolButton *createFilterButton(const QIcon &icon, const QString &toolTip
 
 TaskWindow::TaskWindow() : d(std::make_unique<TaskWindowPrivate>())
 {
+    setId("Issues");
+    setDisplayName(Tr::tr("Issues"));
+    setPriorityInStatusBar(100);
+
     d->m_model = new Internal::TaskModel(this);
     d->m_filter = new Internal::TaskFilterModel(d->m_model);
     d->m_filter->setAutoAcceptChildRows(true);
@@ -304,11 +308,6 @@ void TaskWindow::delayedInitialization()
 QList<QWidget*> TaskWindow::toolBarWidgets() const
 {
     return {d->m_filterWarningsButton, d->m_categoriesButton, filterWidget()};
-}
-
-QString TaskWindow::displayName() const
-{
-    return Tr::tr("Issues");
 }
 
 QWidget *TaskWindow::outputWidget(QWidget *)
@@ -501,11 +500,6 @@ int TaskWindow::errorTaskCount(Id category) const
 int TaskWindow::warningTaskCount(Id category) const
 {
     return d->m_model->warningTaskCount(category);
-}
-
-int TaskWindow::priorityInStatusBar() const
-{
-    return 90;
 }
 
 void TaskWindow::clearContents()

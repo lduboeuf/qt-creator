@@ -12,20 +12,21 @@
 #include "mainwindow.h"
 #include "modemanager.h"
 #include "session.h"
+#include "settingsdatabase.h"
 #include "themechooser.h"
 
-#include <coreplugin/actionmanager/actionmanager.h>
-#include <coreplugin/documentmanager.h>
-#include <coreplugin/editormanager/editormanager.h>
-#include <coreplugin/find/findplugin.h>
-#include <coreplugin/find/searchresultwindow.h>
-#include <coreplugin/locator/locator.h>
-#include <coreplugin/coreconstants.h>
-#include <coreplugin/fileutils.h>
+#include "actionmanager/actionmanager.h"
+#include "documentmanager.h"
+#include "editormanager/editormanager.h"
+#include "find/findplugin.h"
+#include "locator/locator.h"
+#include "coreconstants.h"
+#include "fileutils.h"
 
 #include <extensionsystem/pluginerroroverview.h>
 #include <extensionsystem/pluginmanager.h>
 #include <extensionsystem/pluginspec.h>
+
 #include <utils/algorithm.h>
 #include <utils/checkablemessagebox.h>
 #include <utils/commandline.h>
@@ -34,6 +35,7 @@
 #include <utils/mimeutils.h>
 #include <utils/pathchooser.h>
 #include <utils/savefile.h>
+#include <utils/store.h>
 #include <utils/stringutils.h>
 #include <utils/textutils.h>
 #include <utils/theme/theme.h>
@@ -47,7 +49,6 @@
 #include <QLabel>
 #include <QMenu>
 #include <QMessageBox>
-#include <QSettings>
 #include <QUuid>
 
 #include <cstdlib>
@@ -76,6 +77,10 @@ CorePlugin::CorePlugin()
     qRegisterMetaType<Utils::CommandLine>();
     qRegisterMetaType<Utils::FilePath>();
     qRegisterMetaType<Utils::Environment>();
+    qRegisterMetaType<Utils::Store>();
+    qRegisterMetaType<Utils::Key>();
+    qRegisterMetaType<Utils::KeyList>();
+    qRegisterMetaType<Utils::OldStore>();
     m_instance = this;
     setupSystemEnvironment();
 }
@@ -92,6 +97,7 @@ CorePlugin::~CorePlugin()
     DesignMode::destroyModeIfRequired();
 
     delete m_mainWindow;
+    SettingsDatabase::destroy();
     setCreatorTheme(nullptr);
 }
 
@@ -396,7 +402,7 @@ void CorePlugin::checkSettings()
             msgBox.exec();
         }, Qt::QueuedConnection);
     };
-    const QSettings * const userSettings = ICore::settings();
+    const QtcSettings * const userSettings = ICore::settings();
     QString errorDetails;
     switch (userSettings->status()) {
     case QSettings::NoError: {

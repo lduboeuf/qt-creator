@@ -12,9 +12,113 @@
     \page creator-how-tos.html
     \nextpage creator-reference.html
 
-    \title How-to
+    \title How To
 
     The following topics describe how to use \QC to perform a particular task.
+
+    \section1 Design UIs
+
+     \list
+        \li \l {Export SVG images}
+        \li \l {Run QML files}
+        \li \l {View images}
+    \endlist
+
+    \section1 Edit Code
+
+     \list
+        \li \l {Add code snippets to the auto-complete menu}
+        \li \l {Enclose selected code in curly braces, parentheses, or double quotes}
+        \li \l {Indent text or code}
+        \li \l {Jump to a function in QML code}
+        \li \l {Locate files using the keyboard}
+        \li \l {Move between open files}
+        \li \l {Move to symbols}
+        \li \l {Paste text from clipboard history}
+        \li \l {Perform calculations}
+        \li \l {Search and replace across files using a regular expression}
+        \li \l {Select the enclosing block in C++}
+        \li \l {Sort lines alphabetically}
+        \li \l {Specify code style}
+        \li \l {Switch to Edit mode}
+        \li \l {Write down notes}
+    \endlist
+
+    \section1 Manage Projects
+
+    \table
+    \header
+        \li Create Projects
+        \li Configure Projects
+    \row
+        \li
+        \list
+            \li \l {Add a license header template for C++ code}
+            \li \l {Add libraries to projects}
+            \li \l {Add subprojects to projects}
+            \li \l {Add wizards}
+            \li \l {Create C++ classes}
+            \li \l {Create files}
+            \li \l {Create OpenGL fragment and vertex shaders}
+            \li \l {Create resource files}
+            \li \l {Create VCS repositories for new projects}
+            \li \l {Select the build system}
+            \li \l {Use project wizards}
+        \endlist
+        \li
+        \list
+            \li \l {Activate kits for a project}
+            \li \l {Develop Qt for Python applications}
+            \li \l {Open projects}
+            \li \l {Specify dependencies}
+            \li \l {Specify editor settings}
+            \li \l {Specify project contents}
+        \endlist
+    \endtable
+
+    \section1 Build and Run
+
+    \section2 Manage Kits
+
+        \list
+            \li \l {Add compilers}
+            \li \l {Add custom compilers}
+            \li \l {Add debuggers}
+            \li \l {Add kits}
+            \li \l {Add Nim compilers}
+            \li \l {Add Qt versions}
+            \li \l {Edit Qbs profiles}
+        \endlist
+
+    \section1 Read Qt Documentation
+
+    \list
+        \li \l {Add bookmarks to help pages}
+        \li \l {Add external documentation}
+        \li \l {Detach the help window}
+        \li \l {Filter documentation}
+        \li \l {Find information in Qt documentation}
+        \li \l {Get help}
+        \li \l {Search from documentation}
+        \li \l {Select the help start page}
+    \endlist
+
+    \section1 Use \QC
+
+    \list
+        \li \l {Collect usage statistics}
+        \li \l {Enable and disable plugins}
+        \li \l {Find settings files}
+        \li \l {Inspect internal logs}
+        \li \l {Install plugins}
+        \li \l {Manage data collection}
+        \li \l {Run \QC from the command line}
+        \li \l {Set up version control systems}
+        \li \l {Use common VCS functions}
+        \li \l {Use external text editors}
+        \li \l {Use external tools}
+        \li \l {Use Qt Linguist}
+    \endlist
 
     \section1 Use the UI
 
@@ -27,54 +131,10 @@
         \li \l {Set high DPI scaling}
         \li \l {Set the number of recent files shown}
         \li \l {Show and hide sidebars}
+        \li \l {Show task list files in Issues}
         \li \l {Switch between modes}
         \li \l {Switch UI themes}
         \li \l {View output}
-    \endlist
-
-    \section1 Edit Code
-
-     \list
-        \li \l {Add code snippets to the auto-complete menu}
-        \li \l {Enclose selected code in curly braces, parentheses, or double quotes}
-        \li \l {Jump to a function in QML code}
-        \li \l {Locate files using the keyboard}
-        \li \l {Move between open files}
-        \li \l {Move to symbols}
-        \li \l {Paste text from clipboard history}
-        \li \l {Perform calculations}
-        \li \l {Search and replace across files using a regular expression}
-        \li \l {Select the enclosing block in C++}
-        \li \l {Sort lines alphabetically}
-        \li \l {Switch to Edit mode}
-        \li \l {Write down notes}
-    \endlist
-
-    \section1 Design UIs
-
-     \list
-        \li \l {Export SVG images}
-        \li \l {View images}
-    \endlist
-
-    \section1 Manage Projects
-
-    \list
-        \li \l {Add a license header template for C++ code}
-        \li \l {Add subprojects to projects}
-        \li \l {Develop Qt for Python applications}
-        \li \l {Specify project contents}
-        \li \l {Select the build system}
-        \li \l {Use project wizards}
-    \endlist
-
-    \section1 Use \QC
-
-    \list
-        \li \l {Enable and disable plugins}
-        \li \l {Find settings files}
-        \li \l {Install plugins}
-        \li \l {Run \QC from the command line}
     \endlist
 */
 
@@ -142,14 +202,55 @@
 
     \title Run \QC from the command line
 
-    You can launch \QC from the command line using the name of an
-    existing \l{Managing Sessions}{session} or project file by entering
-    the name as the command argument.
+    You can start \QC and specify some options from the command line. For
+    example, you can open a file to any line and column.
 
-    For example, running \c {qtcreator somesession}, launches \QC and
-    loads the session called \e somesession.
+    To use command-line options, enter the following command in the
+    directory that contains the \QC executable or specify the path to
+    \QC as a part of the command:
 
-    For more information, see \l{Using Command Line Options}.
+    \badcode
+    qtcreator [option] [filename[:line_number[:column_number]]]
+    \endcode
+
+    \note You can use either a colon (:) or a plus sign (+) as a separator
+    between the filename and line number and the line number and the column
+    number. You can also use a space between the separator and the line number.
+
+    \section1 Examples of CLI commands
+
+    On Windows:
+
+    \list
+
+        \li \c {C:\qtcreator\bin>qtcreator -help}
+
+        \li \c {C:\qtcreator\bin>qtcreator C:\TextFinder\textfinder.cpp:100:2}
+
+        \li \c {C:\qtcreator\bin>qtcreator C:\TextFinder\textfinder.cpp +100+2}
+
+    \endlist
+
+    On \macos:
+
+    \list
+
+        \li \c {Qt\ Creator.app/Contents/MacOS/Qt\ Creator -help}
+
+    \endlist
+
+    \section1 Open a project from a directory
+
+    To open a project that is located in a particular directory, you can
+    pass on the directory name as a command-line argument. \QC looks for
+    a \l{Managing Sessions}{session} that matches the directory name and
+    loads it. Or it looks for a project file in the directory and opens it.
+
+    For example, on Windows:
+
+    \c {C:\qtcreator\bin>qtcreator.exe C:\Examples\alarms}
+
+    \sa {Command-Line Options}
 */
 
 /*!

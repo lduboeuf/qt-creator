@@ -5,7 +5,6 @@
 
 #include "texteditor_global.h"
 
-#include "blockrange.h"
 #include "codeassist/assistenums.h"
 #include "indenter.h"
 #include "refactoroverlay.h"
@@ -369,7 +368,7 @@ public:
     void unfoldCurrentBlock();
     void selectEncoding();
     void updateTextCodecLabel();
-    void selectLineEnding(int index);
+    void selectLineEnding(Utils::TextFileFormat::LineTerminationMode lineEnding);
     void updateTextLineEndingLabel();
     void addSelectionNextFindMatch();
     void addCursorsToLineEnds();
@@ -434,8 +433,8 @@ public:
     void indent();
     void unindent();
 
-    void undo();
-    void redo();
+    virtual void undo();
+    virtual void redo();
 
     void openLinkUnderCursor();
     void openLinkUnderCursorInNextSplit();

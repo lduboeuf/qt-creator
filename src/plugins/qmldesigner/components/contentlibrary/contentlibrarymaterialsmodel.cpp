@@ -206,13 +206,27 @@ void ContentLibraryMaterialsModel::createImporter(const QString &bundlePath, con
                                                   const QStringList &sharedFiles)
 {
     m_importer = new Internal::ContentLibraryBundleImporter(bundlePath, bundleId, sharedFiles);
-    connect(m_importer, &Internal::ContentLibraryBundleImporter::importFinished, this,
+#ifdef QDS_USE_PROJECTSTORAGE
+    connect(m_importer,
+            &Internal::ContentLibraryBundleImporter::importFinished,
+            this,
+            [&](const QmlDesigner::TypeName &typeName) {
+                m_importerRunning = false;
+                emit importerRunningChanged();
+                if (typeName.size())
+                    emit bundleMaterialImported(typeName);
+            });
+#else
+    connect(m_importer,
+            &Internal::ContentLibraryBundleImporter::importFinished,
+            this,
             [&](const QmlDesigner::NodeMetaInfo &metaInfo) {
                 m_importerRunning = false;
                 emit importerRunningChanged();
                 if (metaInfo.isValid())
                     emit bundleMaterialImported(metaInfo);
             });
+#endif
 
     connect(m_importer, &Internal::ContentLibraryBundleImporter::unimportFinished, this,
             [&](const QmlDesigner::NodeMetaInfo &metaInfo) {
@@ -291,7 +305,7 @@ void ContentLibraryMaterialsModel::loadMaterialBundle(const QDir &matBundleDir)
     for (const QString &s : std::as_const(sharedFiles)) {
         const QString fullSharedFilePath = matBundleDir.filePath(s);
 
-        if (!QFile::exists(fullSharedFilePath))
+        if (!QFileInfo::exists(fullSharedFilePath))
             missingSharedFiles.push_back(s);
     }
 

@@ -22,6 +22,8 @@ private:
     /* Needed for CMake support issue:25176 */
 
     bool hasCapability(unsigned cap) const override;
+
+    const QLoggingCategory &logCategory() override;
 };
 
 } // Debugger::Internal

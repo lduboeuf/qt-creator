@@ -65,8 +65,15 @@ public:
 
         setLayouter([this] {
             using namespace Layouting;
+
+            auto cmakeFormatter = new QLabel(
+                Tr::tr("<a href=\"%1\">CMakeFormat</a> command:")
+                    .arg("qthelp://org.qt-project.qtcreator/doc/"
+                         "creator-project-cmake.html#formatting-cmake-files"));
+            cmakeFormatter->setOpenExternalLinks(true);
+
             return Column {
-                Row { Tr::tr("CMakeFormat command:"), command },
+                Row { cmakeFormatter, command },
                 Space(10),
                 Group {
                     title(Tr::tr("Automatic Formatting on File Save")),
@@ -90,14 +97,20 @@ public:
 
         Core::Command *cmd = ActionManager::registerAction(&formatFile, Constants::CMAKEFORMATTER_ACTION_ID);
         connect(&formatFile, &QAction::triggered, this, [this] {
-            TextEditor::formatCurrentFile(formatCommand());
+            auto command = formatCommand();
+            if (auto editor = EditorManager::currentEditor())
+                extendCommandWithConfigs(command, editor->document()->filePath());
+
+            TextEditor::formatCurrentFile(command);
         });
 
         ActionManager::actionContainer(Constants::CMAKEFORMATTER_MENU_ID)->addAction(cmd);
 
         auto updateActions = [this] {
             auto editor = EditorManager::currentEditor();
-            formatFile.setEnabled(editor && isApplicable(editor->document()));
+
+            formatFile.setEnabled(haveValidFormatCommand && editor
+                                  && isApplicable(editor->document()));
         };
 
         connect(&autoFormatMime, &Utils::StringAspect::changed,
@@ -108,6 +121,15 @@ public:
                 this, &CMakeFormatterSettings::applyIfNecessary);
 
         readSettings();
+
+        const FilePath commandPath = command().searchInPath();
+        haveValidFormatCommand = commandPath.exists() && commandPath.isExecutableFile();
+
+        formatFile.setEnabled(haveValidFormatCommand);
+        connect(&command, &FilePathAspect::validChanged, this, [this](bool validState) {
+            haveValidFormatCommand = validState;
+            formatFile.setEnabled(haveValidFormatCommand);
+        });
     }
 
     bool isApplicable(const IDocument *document) const;
@@ -124,7 +146,48 @@ public:
         return cmd;
     }
 
+    static FilePaths formatConfigFiles(const FilePath &dir)
+    {
+        if (dir.isEmpty())
+            return FilePaths();
+
+        return filtered(transform({".cmake-format",
+                                   ".cmake-format.py",
+                                   ".cmake-format.json",
+                                   ".cmake-format.yaml",
+                                   "cmake-format.py",
+                                   "cmake-format.json",
+                                   "cmake-format.yaml"},
+                                  [dir](const QString &fileName) {
+                                      return dir.pathAppended(fileName);
+                                  }),
+                        &FilePath::exists);
+    }
+
+    static FilePaths findConfigs(const FilePath &fileName)
+    {
+        FilePath parentDirectory = fileName.parentDir();
+        while (parentDirectory.exists()) {
+            FilePaths configFiles = formatConfigFiles(parentDirectory);
+            if (!configFiles.isEmpty())
+                return configFiles;
+
+            parentDirectory = parentDirectory.parentDir();
+        }
+        return FilePaths();
+    }
+
+    static void extendCommandWithConfigs(TextEditor::Command &command, const FilePath &source)
+    {
+        const FilePaths configFiles = findConfigs(source);
+        if (!configFiles.isEmpty()) {
+            command.addOption("--config-files");
+            command.addOptions(Utils::transform(configFiles, &FilePath::nativePath));
+        }
+    }
+
     FilePathAspect command{this};
+    bool haveValidFormatCommand{false};
     BoolAspect autoFormatOnSave{this};
     BoolAspect autoFormatOnlyCurrentProject{this};
     StringAspect autoFormatMime{this};
@@ -180,8 +243,10 @@ void CMakeFormatterSettings::applyIfNecessary(IDocument *document) const
 
     IEditor *currentEditor = EditorManager::currentEditor();
     IEditor *editor = editors.contains(currentEditor) ? currentEditor : editors.first();
-    if (auto widget = TextEditorWidget::fromEditor(editor))
+    if (auto widget = TextEditorWidget::fromEditor(editor)) {
+        extendCommandWithConfigs(command, editor->document()->filePath());
         TextEditor::formatEditor(widget, command);
+    }
 }
 
 CMakeFormatterSettings &formatterSettings()

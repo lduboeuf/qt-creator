@@ -22,7 +22,6 @@
 
 using namespace Core;
 using namespace Utils;
-static Q_LOGGING_CATEGORY(dapEngineLog, "qtc.dbg.dapengine", QtWarningMsg)
 
 namespace Debugger::Internal {
 
@@ -47,7 +46,11 @@ public:
     void start() override { m_socket.connectToServer(m_socketName, QIODevice::ReadWrite); }
 
     bool isRunning() const override { return m_socket.isOpen(); }
-    void writeRaw(const QByteArray &data) override { m_socket.write(data); }
+    void writeRaw(const QByteArray &data) override
+    {
+        if (m_socket.isOpen())
+            m_socket.write(data);
+    }
     void kill() override
     {
         if (m_socket.isOpen())
@@ -79,13 +82,20 @@ public:
         : DapClient(provider, parent)
     {}
 
-    void sendInitialize()
+    void sendInitialize() override
     {
         postRequest("initialize",
                     QJsonObject{{"clientID", "QtCreator"},
                                 {"clientName", "QtCreator"},
                                 {"adapterID", "cmake"},
                                 {"pathFormat", "path"}});
+    }
+
+private:
+    const QLoggingCategory &logCategory() override {
+        static const QLoggingCategory logCategory = QLoggingCategory("qtc.dbg.dapengine.cmake",
+                                                                     QtWarningMsg);
+        return logCategory;
     }
 };
 
@@ -99,10 +109,10 @@ CMakeDapEngine::CMakeDapEngine()
 
 void CMakeDapEngine::setupEngine()
 {
-    QTC_ASSERT(state() == EngineSetupRequested, qCDebug(dapEngineLog) << state());
+    QTC_ASSERT(state() == EngineSetupRequested, qCDebug(logCategory()) << state());
 
-    qCDebug(dapEngineLog) << "build system name"
-                          << ProjectExplorer::ProjectTree::currentBuildSystem()->name();
+    qCDebug(logCategory()) << "build system name"
+                           << ProjectExplorer::ProjectTree::currentBuildSystem()->name();
 
     IDataProvider *dataProvider;
     if (TemporaryDirectory::masterDirectoryFilePath().osType() == Utils::OsType::OsTypeWindows) {
@@ -130,8 +140,6 @@ void CMakeDapEngine::setupEngine()
             return;
         }
     });
-
-    notifyEngineSetupOk();
 }
 
 bool CMakeDapEngine::hasCapability(unsigned cap) const
@@ -139,6 +147,7 @@ bool CMakeDapEngine::hasCapability(unsigned cap) const
     return cap & (ReloadModuleCapability
                   | BreakConditionCapability
                   | ShowModuleSymbolsCapability
+                  /*| AddWatcherCapability*/ // disable while the #25282 bug is not fixed
                   /*| RunToLineCapability*/); // disable while the #25176 bug is not fixed
 }
 
@@ -166,6 +175,13 @@ void CMakeDapEngine::updateBreakpoint(const Breakpoint &bp)
     }
     notifyBreakpointChangeOk(bp);
     /* Needed for CMake support issue:25176 */
+}
+
+const QLoggingCategory &CMakeDapEngine::logCategory()
+{
+    static const QLoggingCategory logCategory = QLoggingCategory("qtc.dbg.dapengine.cmake",
+                                                                 QtWarningMsg);
+    return logCategory;
 }
 
 } // namespace Debugger::Internal

@@ -21,7 +21,7 @@
             \uicontrol Edit > \uicontrol Preferences > \uicontrol {Text Editor}
             > \uicontrol Behavior
         \li Highlighting the symbol under cursor
-        \li \l{Viewing Function Tooltips}{Viewing function tooltips}
+        \li \l{View function tooltips}
         \li \l{Semantic Highlighting}{Semantic highlighting}, as defined in
             \l{https://github.com/microsoft/vscode-languageserver-node/pull/367}
             {Proposal of the semantic highlighting protocol extension}
@@ -100,7 +100,7 @@
             request.
         \li In the \uicontrol Executable field, enter the path to the language
             server executable.
-        \li In the \uicontrol Arguments field, enter any required command line
+        \li In the \uicontrol Arguments field, enter any required command-line
             arguments. Select \uicontrol Variables to use variables as
             arguments.
     \endlist

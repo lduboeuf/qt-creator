@@ -8,9 +8,10 @@ Module {
     Depends { id: qtcore; name: "Qt.core" }
     Depends { name: "qtc" }
 
+    property var replacements
+
     // TODO: Wrap the VCS specific stuff in a dedicated module
-    property bool hasVcs: Utilities.versionCompare(qbs.version, "1.10") >= 0
-    property bool useVcsData: hasVcs
+    property bool useVcsData: true
     Depends { name: "vcs"; condition: useVcsData }
     Properties {
         condition: useVcsData
@@ -52,7 +53,7 @@ Module {
             var cmd = new JavaScriptCommand();
             cmd.description = "prepare " + FileInfo.fileName(output.filePath);
             cmd.highlight = "codegen";
-            cmd.pluginJsonReplacements = product.pluginJsonReplacements;
+            cmd.pluginJsonReplacements = product.pluginjson.replacements;
             cmd.plugin_depends = [];
             var deps = product.dependencies;
             for (var d in deps) {

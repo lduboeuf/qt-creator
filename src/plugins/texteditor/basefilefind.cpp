@@ -13,6 +13,7 @@
 #include <coreplugin/documentmanager.h>
 #include <coreplugin/editormanager/editormanager.h>
 #include <coreplugin/find/ifindsupport.h>
+#include <coreplugin/find/textfindconstants.h>
 #include <coreplugin/icore.h>
 #include <coreplugin/progressmanager/futureprogress.h>
 #include <coreplugin/progressmanager/progressmanager.h>
@@ -30,7 +31,6 @@
 #include <QPair>
 #include <QPointer>
 #include <QPromise>
-#include <QSettings>
 #include <QStringListModel>
 
 using namespace Utils;
@@ -139,8 +139,8 @@ public:
     QString title() const override { return Tr::tr("Internal"); }
     QString toolTip() const override { return {}; }
     QWidget *widget() const override { return m_widget; }
-    void readSettings(QSettings * /*settings*/) override {}
-    void writeSettings(QSettings * /*settings*/) const override {}
+    void readSettings(QtcSettings * /*settings*/) override {}
+    void writeSettings(QtcSettings * /*settings*/) const override {}
     SearchExecutor searchExecutor() const override
     {
         return [](const FileFindParameters &parameters) {
@@ -443,7 +443,7 @@ FilePath BaseFileFind::searchDir() const
     return d->m_searchDir;
 }
 
-void BaseFileFind::writeCommonSettings(QSettings *settings)
+void BaseFileFind::writeCommonSettings(QtcSettings *settings)
 {
     const auto fromNativeSeparators = [](const QStringList &files) -> QStringList {
         return Utils::transform(files, &QDir::fromNativeSeparators);
@@ -463,7 +463,7 @@ void BaseFileFind::writeCommonSettings(QSettings *settings)
     settings->setValue("currentSearchEngineIndex", d->m_currentSearchEngineIndex);
 }
 
-void BaseFileFind::readCommonSettings(QSettings *settings, const QString &defaultFilter,
+void BaseFileFind::readCommonSettings(QtcSettings *settings, const QString &defaultFilter,
                                       const QString &defaultExclusionFilter)
 {
     const auto toNativeSeparators = [](const QStringList &files) -> QStringList {

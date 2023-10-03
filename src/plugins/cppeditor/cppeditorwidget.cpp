@@ -478,8 +478,7 @@ void CppEditorWidget::finalizeInitialization()
 
     // set up the use highlighitng
     connect(this, &CppEditorWidget::cursorPositionChanged, this, [this] {
-        if (!d->m_localRenaming.isActive())
-            d->m_useSelectionsUpdater.scheduleUpdate();
+        d->m_useSelectionsUpdater.scheduleUpdate();
 
         // Notify selection expander about the changed cursor.
         d->m_cppSelectionChanger.onCursorPositionChanged(textCursor());
@@ -1090,12 +1089,15 @@ protected:
 QMenu *CppEditorWidget::createRefactorMenu(QWidget *parent) const
 {
     auto *menu = new QMenu(Tr::tr("&Refactor"), parent);
-    menu->addAction(ActionManager::command(TextEditor::Constants::RENAME_SYMBOL)->action());
+    connect(menu, &QMenu::aboutToShow, this, [this, menu] {
+        menu->disconnect(this);
 
-    // ### enable
-    // updateSemanticInfo(m_semanticHighlighter->semanticInfo(currentSource()));
+        // ### enable
+        // updateSemanticInfo(m_semanticHighlighter->semanticInfo(currentSource()));
 
-    if (isSemanticInfoValidExceptLocalUses()) {
+        if (!isSemanticInfoValidExceptLocalUses())
+            return;
+
         d->m_useSelectionsUpdater.abortSchedule();
 
         const CppUseSelectionsUpdater::RunnerInfo runnerInfo = d->m_useSelectionsUpdater.update();
@@ -1120,7 +1122,7 @@ QMenu *CppEditorWidget::createRefactorMenu(QWidget *parent) const
         case CppUseSelectionsUpdater::RunnerInfo::Invalid:
             QTC_CHECK(false && "Unexpected CppUseSelectionsUpdater runner result");
         }
-    }
+    });
 
     return menu;
 }
@@ -1130,10 +1132,11 @@ static void appendCustomContextMenuActionsAndMenus(QMenu *menu, QMenu *refactorM
     bool isRefactoringMenuAdded = false;
     const QMenu *contextMenu = ActionManager::actionContainer(Constants::M_CONTEXT)->menu();
     for (QAction *action : contextMenu->actions()) {
-        menu->addAction(action);
         if (action->objectName() == QLatin1String(Constants::M_REFACTORING_MENU_INSERTION_POINT)) {
             isRefactoringMenuAdded = true;
             menu->addMenu(refactorMenu);
+        } else {
+            menu->addAction(action);
         }
     }
 
@@ -1223,12 +1226,10 @@ void CppEditorWidget::updateSemanticInfo(const SemanticInfo &semanticInfo,
 
     d->m_lastSemanticInfo = semanticInfo;
 
-    if (!d->m_localRenaming.isActive()) {
-        const CppUseSelectionsUpdater::CallType type = updateUseSelectionSynchronously
-            ? CppUseSelectionsUpdater::CallType::Synchronous
-            : CppUseSelectionsUpdater::CallType::Asynchronous;
-        d->m_useSelectionsUpdater.update(type);
-    }
+    const CppUseSelectionsUpdater::CallType type
+        = updateUseSelectionSynchronously ? CppUseSelectionsUpdater::CallType::Synchronous
+                                          : CppUseSelectionsUpdater::CallType::Asynchronous;
+    d->m_useSelectionsUpdater.update(type);
 
     // schedule a check for a decl/def link
     updateFunctionDeclDefLink();

@@ -633,7 +633,7 @@ static bool continueDespiteReleaseBuild(const QString &toolName)
     return CheckableMessageBox::question(ICore::dialogParent(),
                                          title,
                                          message,
-                                         QString("ClangToolsCorrectModeWarning"))
+                                         Key("ClangToolsCorrectModeWarning"))
            == QMessageBox::Yes;
 }
 
@@ -773,6 +773,9 @@ Group ClangTool::runRecipe(const RunSettings &runSettings,
                         .arg(output.fileToAnalyze.toUserOutput(), output.errorMessage);
                     // TODO: postMessage() instead
                     m_runControl->postMessage(message, StdErrFormat);
+                    m_runControl->postMessage(output.errorDetails, StdErrFormat);
+                } else if (!output.errorMessage.isEmpty()) {
+                    m_runControl->postMessage(output.errorMessage, ErrorMessageFormat);
                     m_runControl->postMessage(output.errorDetails, StdErrFormat);
                 } else {
                     qCDebug(LOG) << "Clang tool task finished with success:"

@@ -12,6 +12,7 @@
 #include <coreplugin/coreconstants.h>
 #include <coreplugin/editormanager/editormanager.h>
 #include <coreplugin/fileutils.h>
+#include <coreplugin/find/textfindconstants.h>
 #include <coreplugin/icore.h>
 #include <coreplugin/messagemanager.h>
 
@@ -126,7 +127,12 @@ void TerminalWidget::setupPty()
         env.unset("CLINK_NOAUTORUN");
 
     m_process->setProcessMode(ProcessMode::Writer);
-    m_process->setPtyData(Utils::Pty::Data());
+    Utils::Pty::Data data;
+    data.setPtyInputFlagsChangedHandler([this](Pty::PtyInputFlag flags) {
+        const bool password = (flags & Pty::InputModeHidden);
+        setPasswordMode(password);
+    });
+    m_process->setPtyData(data);
     m_process->setCommand(shellCommand);
     if (m_openParameters.workingDirectory.has_value())
         m_process->setWorkingDirectory(*m_openParameters.workingDirectory);
@@ -605,13 +611,21 @@ void TerminalWidget::initActions()
     moveCursorWordRight.setText(Tr::tr("Move Cursor Word Right"));
     close.setText(Tr::tr("Close Terminal"));
 
-    ActionManager::registerAction(&copy, Constants::COPY, context)
-        ->setDefaultKeySequences({QKeySequence(
-            HostOsInfo::isMacHost() ? QLatin1String("Ctrl+C") : QLatin1String("Ctrl+Shift+C"))});
+    auto copyCmd = ActionManager::registerAction(&copy, Constants::COPY, context);
+    auto pasteCmd = ActionManager::registerAction(&paste, Constants::PASTE, context);
 
-    ActionManager::registerAction(&paste, Constants::PASTE, context)
-        ->setDefaultKeySequences({QKeySequence(
-            HostOsInfo::isMacHost() ? QLatin1String("Ctrl+V") : QLatin1String("Ctrl+Shift+V"))});
+    if (HostOsInfo::isMacHost()) {
+        copyCmd->setDefaultKeySequence(QKeySequence(QLatin1String("Ctrl+C")));
+        pasteCmd->setDefaultKeySequence(QKeySequence(QLatin1String("Ctrl+V")));
+    } else if (HostOsInfo::isLinuxHost()) {
+        copyCmd->setDefaultKeySequence(QKeySequence(QLatin1String("Ctrl+Shift+C")));
+        pasteCmd->setDefaultKeySequence(QKeySequence(QLatin1String("Ctrl+Shift+V")));
+    } else if (HostOsInfo::isWindowsHost()) {
+        copyCmd->setDefaultKeySequences(
+            {QKeySequence(QLatin1String("Ctrl+C")), QKeySequence(QLatin1String("Ctrl+Shift+C"))});
+        pasteCmd->setDefaultKeySequences(
+            {QKeySequence(QLatin1String("Ctrl+V")), QKeySequence(QLatin1String("Ctrl+Shift+V"))});
+    }
 
     ActionManager::registerAction(&clearSelection, Constants::CLEARSELECTION, context);
 

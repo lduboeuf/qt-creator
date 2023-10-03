@@ -675,9 +675,14 @@ QList<StaticAnalysis::Type> Check::defaultDisabledMessagesForNonQuickUi()
         ErrBehavioursNotSupportedInQmlUi,
         ErrStatesOnlyInRootItemInQmlUi,
         ErrReferenceToParentItemNotSupportedInQmlUi,
-        ErrDoNotMixTranslationFunctionsInQmlUi,
+        WarnDoNotMixTranslationFunctionsInQmlUi,
     });
     return disabled;
+}
+
+bool Check::incompatibleDesignerQmlId(const QString &id)
+{
+    return idsThatShouldNotBeUsedInDesigner->contains(id);
 }
 
 Check::Check(Document::Ptr doc, const ContextPtr &context, Utils::QtcSettings *qtcSettings)
@@ -769,7 +774,7 @@ void Check::enableQmlDesignerUiFileChecks()
     enableMessage(ErrBehavioursNotSupportedInQmlUi);
     enableMessage(ErrStatesOnlyInRootItemInQmlUi);
     enableMessage(ErrReferenceToParentItemNotSupportedInQmlUi);
-    enableMessage(ErrDoNotMixTranslationFunctionsInQmlUi);
+    enableMessage(WarnDoNotMixTranslationFunctionsInQmlUi);
 }
 
 void Check::disableQmlDesignerUiFileChecks()
@@ -781,7 +786,7 @@ void Check::disableQmlDesignerUiFileChecks()
     disableMessage(ErrBehavioursNotSupportedInQmlUi);
     disableMessage(ErrStatesOnlyInRootItemInQmlUi);
     disableMessage(ErrReferenceToParentItemNotSupportedInQmlUi);
-    disableMessage(ErrDoNotMixTranslationFunctionsInQmlUi);
+    disableMessage(WarnDoNotMixTranslationFunctionsInQmlUi);
 }
 
 bool Check::preVisit(Node *ast)
@@ -1099,7 +1104,7 @@ bool Check::visit(UiScriptBinding *ast)
             return false;
         }
 
-        if (idsThatShouldNotBeUsedInDesigner->contains(id)) {
+        if (incompatibleDesignerQmlId(id)) {
             addMessage(ErrInvalidIdeInVisualDesigner, loc);
         }
 
@@ -1359,71 +1364,6 @@ static bool shouldAvoidNonStrictEqualityCheck(const Value *lhs, const Value *rhs
     return false;
 }
 
-static bool equalIsAlwaysFalse(const Value *lhs, const Value *rhs)
-{
-    if ((lhs->asNullValue() || lhs->asUndefinedValue())
-        && (rhs->asNumberValue() || rhs->asBooleanValue() || rhs->asStringValue()))
-        return true;
-    return false;
-}
-
-static bool isIntegerValue(const Value *value)
-{
-    if (value->asNumberValue() || value->asIntValue())
-        return true;
-    if (auto obj = value->asObjectValue())
-        return obj->className() == "Number" || obj->className() == "int";
-
-    return false;
-}
-
-static bool isStringValue(const Value *value)
-{
-    if (value->asStringValue())
-        return true;
-    if (auto obj = value->asObjectValue())
-        return obj->className() == "QString" || obj->className() == "string" || obj->className() == "String";
-
-    return false;
-}
-
-static bool isBooleanValue(const Value *value)
-{
-    if (value->asBooleanValue())
-        return true;
-    if (auto obj = value->asObjectValue())
-        return obj->className() == "boolean" || obj->className() == "Boolean";
-
-    return false;
-}
-
-static bool strictCompareConstant(const Value *lhs, const Value *rhs)
-{
-    // attached properties and working at runtime cases may be undefined at evaluation time
-    if (lhs->asUndefinedValue() || rhs->asUndefinedValue())
-        return false;
-    if (lhs->asUnknownValue() || rhs->asUnknownValue())
-        return false;
-    if (lhs->asFunctionValue() || rhs->asFunctionValue()) // function evaluation not implemented
-        return false;
-    if (isIntegerValue(lhs) && isIntegerValue(rhs))
-        return false;
-    if (isStringValue(lhs) && isStringValue(rhs))
-        return false;
-    if (isBooleanValue(lhs) && isBooleanValue(rhs))
-        return false;
-    if (lhs->asBooleanValue() && !rhs->asBooleanValue())
-        return true;
-    if (lhs->asNumberValue() && !rhs->asNumberValue())
-        return true;
-    if (lhs->asStringValue() && !rhs->asStringValue())
-        return true;
-    if (lhs->asObjectValue() && (!rhs->asObjectValue() || !rhs->asNullValue()))
-        return true;
-    return false;
-}
-
-
 bool Check::visit(BinaryExpression *ast)
 {
     const QString source = _doc->source();
@@ -1448,18 +1388,6 @@ bool Check::visit(BinaryExpression *ast)
         if (shouldAvoidNonStrictEqualityCheck(lhsValue, rhsValue)
                 || shouldAvoidNonStrictEqualityCheck(rhsValue, lhsValue)) {
             addMessage(MaybeWarnEqualityTypeCoercion, ast->operatorToken);
-        }
-        if (equalIsAlwaysFalse(lhsValue, rhsValue)
-            || equalIsAlwaysFalse(rhsValue, lhsValue))
-            addMessage(WarnLogicalValueDoesNotDependOnValues, ast->operatorToken);
-    }
-    if (ast->op == QSOperator::StrictEqual || ast->op == QSOperator::StrictNotEqual) {
-        Evaluate eval(&_scopeChain);
-        const Value *lhsValue = eval(ast->left);
-        const Value *rhsValue = eval(ast->right);
-        if (strictCompareConstant(lhsValue, rhsValue)
-                || strictCompareConstant(rhsValue, lhsValue)) {
-            addMessage(WarnLogicalValueDoesNotDependOnValues, ast->operatorToken);
         }
     }
 
@@ -1932,7 +1860,7 @@ bool Check::visit(CallExpression *ast)
 
         if (lastTransLationfunction != noTranslationfunction
             && lastTransLationfunction != translationFunction)
-            addMessage(ErrDoNotMixTranslationFunctionsInQmlUi, location);
+            addMessage(WarnDoNotMixTranslationFunctionsInQmlUi, location);
 
         lastTransLationfunction = translationFunction;
     }
@@ -2048,14 +1976,14 @@ const Value *Check::checkScopeObjectMember(const UiQualifiedId *id)
         return nullptr;
 
     if (!value) {
-        // We omit M16 messages if the type using ImmediateProperties
-        // Ideally, we should obtain them through metaobject information
-        const bool omitMessage = !m_typeStack.isEmpty()
-                                 && ((m_typeStack.last() == "PropertyChanges")
-                                     || m_typeStack.last() == "Binding")
-                                 && !m_idStack.isEmpty() && m_idStack.last().contains(propertyName);
-        if (!omitMessage)
+        // We omit M16 messages if the enclosing type have ImmediateProperties classinfo.
+        // Ideally, we should get this information from metaobject by checking the index
+        // metaObject->indexOfClassInfo("ImmediatePropertyNames"), for now it's hard coded.
+        if ( !m_typeStack.isEmpty()
+                                 && ((m_typeStack.last() != "PropertyChanges")
+                                     && m_typeStack.last() != "Binding")) {
             addMessage(ErrInvalidPropertyName, id->identifierToken, propertyName);
+        }
         return nullptr;
     }
 

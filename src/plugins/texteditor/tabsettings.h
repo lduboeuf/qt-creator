@@ -6,12 +6,9 @@
 #include "texteditor_global.h"
 
 #include <utils/store.h>
+#include <utils/qtcsettings.h>
 
 #include <QTextBlock>
-
-QT_BEGIN_NAMESPACE
-class QSettings;
-QT_END_NAMESPACE
 
 namespace TextEditor {
 
@@ -37,9 +34,6 @@ public:
     TabSettings() = default;
     TabSettings(TabPolicy tabPolicy, int tabSize,
                 int indentSize, ContinuationAlignBehavior continuationAlignBehavior);
-
-    void toSettings(const Utils::Key &category, QSettings *s) const;
-    void fromSettings(const Utils::Key &category, QSettings *s);
 
     Utils::Store toMap() const;
     void fromMap(const Utils::Store &map);

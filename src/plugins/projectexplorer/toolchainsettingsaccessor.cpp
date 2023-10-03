@@ -12,6 +12,8 @@
 
 #include <utils/algorithm.h>
 
+#include <nanotrace/nanotrace.h>
+
 #include <QElapsedTimer>
 #include <QGuiApplication>
 #include <QLoggingCategory>
@@ -56,6 +58,9 @@ static Toolchains autoDetectToolChains(const ToolchainDetector &detector)
 {
     Toolchains result;
     for (ToolChainFactory *f : ToolChainFactory::allToolChainFactories()) {
+        NANOTRACE_SCOPE_ARGS("ProjectExplorer",
+                             "ToolChainSettingsAccessor::autoDetectToolChains",
+                             {"factory", f->displayName().toStdString()});
         QElapsedTimer et;
         et.start();
         result.append(f->autoDetect(detector));
@@ -179,6 +184,7 @@ ToolChainSettingsAccessor::ToolChainSettingsAccessor()
 
 Toolchains ToolChainSettingsAccessor::restoreToolChains(QWidget *parent) const
 {
+    NANOTRACE_SCOPE("ProjectExplorer", "ToolChainSettingsAccessor::restoreToolChains");
     // read all tool chains from SDK
     const Toolchains systemFileTcs = toolChains(
         restoreSettings(Core::ICore::installerResourcePath(TOOLCHAIN_FILENAME), parent));
@@ -224,7 +230,7 @@ void ToolChainSettingsAccessor::saveToolChains(const Toolchains &toolchains, QWi
         tc->toMap(tmp);
         if (tmp.isEmpty())
             continue;
-        data.insert(TOOLCHAIN_DATA_KEY + Key::number(count), variantFromStore(tmp));
+        data.insert(numberedKey(TOOLCHAIN_DATA_KEY, count), variantFromStore(tmp));
         ++count;
     }
     data.insert(TOOLCHAIN_COUNT_KEY, count);
@@ -241,7 +247,7 @@ Toolchains ToolChainSettingsAccessor::toolChains(const Store &data) const
 
     const int count = data.value(TOOLCHAIN_COUNT_KEY, 0).toInt();
     for (int i = 0; i < count; ++i) {
-        const Key key = TOOLCHAIN_DATA_KEY + Key::number(i);
+        const Key key = numberedKey(TOOLCHAIN_DATA_KEY, i);
         if (!data.contains(key))
             break;
 

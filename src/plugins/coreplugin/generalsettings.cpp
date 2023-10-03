@@ -1,14 +1,13 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
+#include "dialogs/restartdialog.h"
+#include "dialogs/ioptionspage.h"
 #include "generalsettings.h"
 #include "coreconstants.h"
 #include "coreplugintr.h"
 #include "icore.h"
 #include "themechooser.h"
-
-#include <coreplugin/dialogs/restartdialog.h>
-#include <coreplugin/dialogs/ioptionspage.h>
 
 #include <extensionsystem/pluginmanager.h>
 
@@ -174,7 +173,7 @@ static bool hasQmFilesForLocale(const QString &locale, const QString &creatorTrP
     static const QString qtTrPath = QLibraryInfo::path(QLibraryInfo::TranslationsPath);
 
     const QString trFile = QLatin1String("/qt_") + locale + QLatin1String(".qm");
-    return QFile::exists(qtTrPath + trFile) || QFile::exists(creatorTrPath + trFile);
+    return QFileInfo::exists(qtTrPath + trFile) || QFileInfo::exists(creatorTrPath + trFile);
 }
 
 void GeneralSettingsWidget::fillLanguageBox() const
@@ -256,14 +255,14 @@ void GeneralSettingsWidget::resetLanguage()
 
 QString GeneralSettingsWidget::language()
 {
-    QSettings *settings = ICore::settings();
-    return settings->value(QLatin1String("General/OverrideLanguage")).toString();
+    QtcSettings *settings = ICore::settings();
+    return settings->value("General/OverrideLanguage").toString();
 }
 
 void GeneralSettingsWidget::setLanguage(const QString &locale)
 {
     QtcSettings *settings = ICore::settings();
-    if (settings->value(QLatin1String("General/OverrideLanguage")).toString() != locale) {
+    if (settings->value("General/OverrideLanguage").toString() != locale) {
         RestartDialog dialog(ICore::dialogParent(),
                              Tr::tr("The language change will take effect after restart."));
         dialog.exec();
@@ -286,7 +285,7 @@ void GeneralSettingsWidget::fillCodecBox() const
 
 QByteArray GeneralSettingsWidget::codecForLocale()
 {
-    QSettings *settings = ICore::settings();
+    QtcSettings *settings = ICore::settings();
     QByteArray codec = settings->value(settingsKeyCodecForLocale).toByteArray();
     if (codec.isEmpty())
         codec = QTextCodec::codecForLocale()->name();

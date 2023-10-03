@@ -7,6 +7,8 @@
 
 #include <utils/process.h>
 
+#include <QLoggingCategory>
+
 namespace Debugger::Internal {
 
 class IDataProvider : public QObject
@@ -38,6 +40,7 @@ signals:
 
 enum class DapResponseType
 {
+    Initialize,
     ConfigurationDone,
     Continue,
     StackTrace,
@@ -47,6 +50,8 @@ enum class DapResponseType
     StepIn,
     StepOut,
     StepOver,
+    Pause,
+    Evaluate,
     Unknown
 };
 
@@ -76,6 +81,7 @@ public:
     virtual void sendInitialize();
 
     void sendLaunch(const Utils::FilePath &executable);
+    void sendAttach();
     void sendConfigurationDone();
 
     void sendDisconnect();
@@ -88,11 +94,14 @@ public:
     void sendStepOut(int threadId);
     void sendStepOver(int threadId);
 
+    void evaluateVariable(const QString &expression, int frameId);
+
     void stackTrace(int threadId);
     void scopes(int frameId);
     void threads();
     void variables(int variablesReference);
     void setBreakpoints(const QJsonArray &breakpoints, const Utils::FilePath &fileName);
+
     void emitSignals(const QJsonDocument &doc);
 
 signals:
@@ -106,9 +115,14 @@ signals:
 private:
     void readOutput();
 
-private:
-    IDataProvider *m_dataProvider = nullptr;
+    virtual const QLoggingCategory &logCategory()
+    {
+        static const QLoggingCategory logCategory = QLoggingCategory("qtc.dbg.dapengine",
+                                                                     QtWarningMsg);
+        return logCategory;
+    }
 
+    IDataProvider *m_dataProvider = nullptr;
     QByteArray m_inbuffer;
 };
 

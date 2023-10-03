@@ -15,11 +15,10 @@
 #include <utils/mimeutils.h>
 #include <utils/process.h>
 #include <utils/qtcassert.h>
-#include <utils/utilsicons.h>
+#include <utils/icon.h>
 
 #include <projectexplorer/projecttree.h>
 
-#include <QDir>
 #include <QLoggingCategory>
 
 using namespace ProjectExplorer;
@@ -148,7 +147,7 @@ PreprocessedData preprocess(FileApiData &data,
 }
 
 QVector<FolderNode::LocationInfo> extractBacktraceInformation(const BacktraceInfo &backtraces,
-                                                              const QDir &sourceDir,
+                                                              const FilePath &sourceDir,
                                                               int backtraceIndex,
                                                               unsigned int locationInfoPriority)
 {
@@ -162,8 +161,7 @@ QVector<FolderNode::LocationInfo> extractBacktraceInformation(const BacktraceInf
 
         const size_t fileIndex = static_cast<size_t>(btNode.file);
         QTC_ASSERT(fileIndex < backtraces.files.size(), break);
-        const FilePath path = FilePath::fromString(
-            sourceDir.absoluteFilePath(backtraces.files[fileIndex]));
+        const FilePath path = sourceDir.pathAppended(backtraces.files[fileIndex]).absoluteFilePath();
 
         if (btNode.command < 0) {
             // No command, skip: The file itself is already covered:-)
@@ -193,10 +191,8 @@ QList<CMakeBuildTarget> generateBuildTargets(const PreprocessedData &input,
                                              const FilePath &buildDirectory,
                                              bool haveLibrariesRelativeToBuildDirectory)
 {
-    QDir sourceDir(sourceDirectory.toString());
-
     const QList<CMakeBuildTarget> result = transform<QList>(input.targetDetails,
-        [&sourceDir, &sourceDirectory, &buildDirectory,
+        [&sourceDirectory, &buildDirectory,
          &haveLibrariesRelativeToBuildDirectory](const TargetDetails &t) {
             const FilePath currentBuildDir = buildDirectory.resolvePath(t.buildDir);
 
@@ -221,29 +217,29 @@ QList<CMakeBuildTarget> generateBuildTargets(const PreprocessedData &input,
                                       : ct.executable.parentDir();
             ct.sourceDirectory = sourceDirectory.resolvePath(t.sourceDir);
 
-            ct.backtrace = extractBacktraceInformation(t.backtraceGraph, sourceDir, t.backtrace, 0);
+            ct.backtrace = extractBacktraceInformation(t.backtraceGraph, sourceDirectory, t.backtrace, 0);
 
             for (const DependencyInfo &d : t.dependencies) {
                 ct.dependencyDefinitions.append(
-                    extractBacktraceInformation(t.backtraceGraph, sourceDir, d.backtrace, 100));
+                    extractBacktraceInformation(t.backtraceGraph, sourceDirectory, d.backtrace, 100));
             }
             for (const SourceInfo &si : t.sources) {
                 ct.sourceDefinitions.append(
-                    extractBacktraceInformation(t.backtraceGraph, sourceDir, si.backtrace, 200));
+                    extractBacktraceInformation(t.backtraceGraph, sourceDirectory, si.backtrace, 200));
             }
             for (const CompileInfo &ci : t.compileGroups) {
                 for (const IncludeInfo &ii : ci.includes) {
                     ct.includeDefinitions.append(
-                        extractBacktraceInformation(t.backtraceGraph, sourceDir, ii.backtrace, 300));
+                        extractBacktraceInformation(t.backtraceGraph, sourceDirectory, ii.backtrace, 300));
                 }
                 for (const DefineInfo &di : ci.defines) {
                     ct.defineDefinitions.append(
-                        extractBacktraceInformation(t.backtraceGraph, sourceDir, di.backtrace, 400));
+                        extractBacktraceInformation(t.backtraceGraph, sourceDirectory, di.backtrace, 400));
                 }
             }
             for (const InstallDestination &id : t.installDestination) {
                 ct.installDefinitions.append(
-                    extractBacktraceInformation(t.backtraceGraph, sourceDir, id.backtrace, 500));
+                    extractBacktraceInformation(t.backtraceGraph, sourceDirectory, id.backtrace, 500));
             }
 
             if (ct.targetType == ExecutableType) {
@@ -336,6 +332,12 @@ bool isPchFile(const FilePath &buildDirectory, const FilePath &path)
     return path.isChildOf(buildDirectory) && path.fileName().startsWith("cmake_pch");
 }
 
+bool isUnityFile(const FilePath &buildDirectory, const FilePath &path)
+{
+    return path.isChildOf(buildDirectory) && path.parentDir().fileName() == "Unity"
+           && path.fileName().startsWith("unity_");
+}
+
 RawProjectParts generateRawProjectParts(const PreprocessedData &input,
                                         const FilePath &sourceDirectory,
                                         const FilePath &buildDirectory)
@@ -343,7 +345,6 @@ RawProjectParts generateRawProjectParts(const PreprocessedData &input,
     RawProjectParts rpps;
 
     for (const TargetDetails &t : input.targetDetails) {
-        QDir sourceDir(sourceDirectory.toString());
         bool needPostfix = t.compileGroups.size() > 1;
         int count = 1;
         for (const CompileInfo &ci : t.compileGroups) {
@@ -386,11 +387,20 @@ RawProjectParts generateRawProjectParts(const PreprocessedData &input,
 
             // Get all sources from the compiler group, except generated sources
             QStringList sources;
+            auto addToSources = [sourceDirectory, &sources](const QString &source) {
+                const FilePath sourcePath = FilePath::fromString(source);
+                if (sourcePath.isAbsolutePath())
+                    sources.push_back(source);
+                else
+                    sources.push_back(
+                        sourceDirectory.pathAppended(source).absoluteFilePath().path());
+            };
+
             for (auto idx: ci.sources) {
                 SourceInfo si = t.sources.at(idx);
                 if (si.isGenerated)
                     continue;
-                sources.push_back(sourceDir.absoluteFilePath(si.path));
+                addToSources(si.path);
             }
 
             // If we are not in a pch compiler group, add all the headers that are not generated
@@ -398,26 +408,45 @@ RawProjectParts generateRawProjectParts(const PreprocessedData &input,
                 return isPchFile(buildDirectory, FilePath::fromString(path));
             });
 
+            const bool hasUnitySources = allOf(sources, [buildDirectory](const QString &path) {
+                return isUnityFile(buildDirectory, FilePath::fromString(path));
+            });
+
             QString headerMimeType;
-            if (ci.language == "C")
+            QString sourceMimeType;
+            if (ci.language == "C") {
                 headerMimeType = CppEditor::Constants::C_HEADER_MIMETYPE;
-            else if (ci.language == "CXX")
+                sourceMimeType = CppEditor::Constants::C_SOURCE_MIMETYPE;
+            } else if (ci.language == "CXX") {
                 headerMimeType = CppEditor::Constants::CPP_HEADER_MIMETYPE;
+                sourceMimeType = CppEditor::Constants::CPP_SOURCE_MIMETYPE;
+            }
             if (!hasPchSource) {
                 for (const SourceInfo &si : t.sources) {
                     if (si.isGenerated)
                         continue;
                     const auto mimeTypes = Utils::mimeTypesForFileName(si.path);
-                    for (const auto &mime : mimeTypes)
-                        if (mime.inherits(headerMimeType))
-                            sources.push_back(sourceDir.absoluteFilePath(si.path));
+                    for (const auto &mime : mimeTypes) {
+                        const bool headerType = mime.inherits(headerMimeType);
+                        const bool sourceUnityType = hasUnitySources ? mime.inherits(sourceMimeType)
+                                                                     : false;
+                        if (headerType || sourceUnityType)
+                            addToSources(si.path);
+                    }
                 }
             }
+            sources.removeDuplicates();
 
-            // Set project files except pch files
-            rpp.setFiles(Utils::filtered(sources, [buildDirectory](const QString &path) {
-                             return !isPchFile(buildDirectory, FilePath::fromString(path));
-                         }), {}, [headerMimeType](const QString &path) {
+            // Set project files except pch / unity files
+            rpp.setFiles(Utils::filtered(sources,
+                                         [buildDirectory](const QString &path) {
+                                             return !isPchFile(buildDirectory,
+                                                               FilePath::fromString(path))
+                                                    && !isUnityFile(buildDirectory,
+                                                                    FilePath::fromString(path));
+                                         }),
+                         {},
+                         [headerMimeType](const QString &path) {
                              // Similar to ProjectFile::classify but classify headers with language
                              // of compile group instead of ambiguous header
                              if (path.endsWith(".h"))
@@ -431,7 +460,7 @@ RawProjectParts generateRawProjectParts(const PreprocessedData &input,
                                        }).path);
             if (!precompiled_header.isEmpty()) {
                 if (precompiled_header.toFileInfo().isRelative()) {
-                    const FilePath parentDir = FilePath::fromString(sourceDir.absolutePath());
+                    const FilePath parentDir = sourceDirectory.parentDir();
                     precompiled_header = parentDir.pathAppended(precompiled_header.toString());
                 }
 
@@ -520,8 +549,7 @@ FolderNode *createSourceGroupNode(const QString &sourceGroupName,
             if (!existingNode) {
                 auto node = createCMakeVFolder(sourceDirectory, Node::DefaultFolderPriority + 5, p);
                 node->setListInProject(false);
-                node->setIcon(
-                    [] { return QIcon::fromTheme("edit-copy", ::Utils::Icons::COPY.icon()); });
+                node->setIcon([] { return Icon::fromTheme("edit-copy"); });
 
                 existingNode = node.get();
 
@@ -566,9 +594,9 @@ void addCompileGroups(ProjectNode *targetRoot,
         auto node = std::make_unique<FileNode>(sourcePath, Node::fileTypeForFileName(sourcePath));
         node->setIsGenerated(si.isGenerated);
 
-        // CMake pch files are generated at configured time, but not marked as generated
+        // CMake pch / unity files are generated at configured time, but not marked as generated
         // so that a "clean" step won't remove them and at a subsequent build they won't exist.
-        if (isPchFile(buildDirectory, sourcePath))
+        if (isPchFile(buildDirectory, sourcePath) || isUnityFile(buildDirectory, sourcePath))
             node->setIsGenerated(true);
 
         // Where does the file node need to go?

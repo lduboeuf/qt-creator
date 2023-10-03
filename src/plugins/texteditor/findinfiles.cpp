@@ -16,7 +16,6 @@
 #include <QComboBox>
 #include <QGridLayout>
 #include <QLabel>
-#include <QSettings>
 #include <QStackedWidget>
 
 using namespace Core;
@@ -109,6 +108,11 @@ void FindInFiles::searchEnginesSelectionChanged(int index)
     m_searchEngineWidget->setCurrentIndex(index);
 }
 
+void FindInFiles::currentEditorChanged(Core::IEditor *editor)
+{
+    m_currentDirectory->setEnabled(editor && editor->document() && !editor->document()->filePath().isEmpty());
+}
+
 QWidget *FindInFiles::createConfigWidget()
 {
     if (!m_configWidget) {
@@ -143,13 +147,25 @@ QWidget *FindInFiles::createConfigWidget()
                 [this] { setSearchDir(m_directory->filePath()); });
         connect(this, &BaseFileFind::searchDirChanged, m_directory, &PathChooser::setFilePath);
         m_directory->setHistoryCompleter(HistoryKey, /*restoreLastItemFromHistory=*/ true);
-        if (!HistoryCompleter::historyExistsFor(QLatin1String(HistoryKey))) {
+        if (!HistoryCompleter::historyExistsFor(HistoryKey)) {
             auto completer = static_cast<HistoryCompleter *>(m_directory->lineEdit()->completer());
             const QStringList legacyHistory = ICore::settings()->value(
-                        QLatin1String("Find/FindInFiles/directories")).toStringList();
+                        "Find/FindInFiles/directories").toStringList();
             for (const QString &dir: legacyHistory)
                 completer->addEntry(dir);
         }
+        m_directory->addButton("Current", this, [this]() {
+            const IDocument *document = EditorManager::instance()->currentDocument();
+            if (!document)
+                return;
+            m_directory->setFilePath(document->filePath().parentDir());
+        });
+        m_currentDirectory = m_directory->buttonAtIndex(1);
+        auto editorManager = EditorManager::instance();
+        connect(editorManager, &EditorManager::currentEditorChanged,
+                this, &FindInFiles::currentEditorChanged);
+        currentEditorChanged(editorManager->currentEditor());
+
         dirLabel->setBuddy(m_directory);
         gridLayout->addWidget(m_directory, row++, 1, 1, 2);
 
@@ -174,16 +190,16 @@ QWidget *FindInFiles::createConfigWidget()
     return m_configWidget;
 }
 
-void FindInFiles::writeSettings(QSettings *settings)
+void FindInFiles::writeSettings(QtcSettings *settings)
 {
-    settings->beginGroup(QLatin1String("FindInFiles"));
+    settings->beginGroup("FindInFiles");
     writeCommonSettings(settings);
     settings->endGroup();
 }
 
-void FindInFiles::readSettings(QSettings *settings)
+void FindInFiles::readSettings(QtcSettings *settings)
 {
-    settings->beginGroup(QLatin1String("FindInFiles"));
+    settings->beginGroup("FindInFiles");
     readCommonSettings(settings, "*.cpp,*.h", "*/.git/*,*/.cvs/*,*/.svn/*,*.autosave");
     settings->endGroup();
 }

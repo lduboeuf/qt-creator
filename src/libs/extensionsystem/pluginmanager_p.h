@@ -38,7 +38,7 @@ namespace Internal {
 
 class PluginSpecPrivate;
 
-class EXTENSIONSYSTEM_EXPORT PluginManagerPrivate : public QObject
+class EXTENSIONSYSTEM_TEST_EXPORT PluginManagerPrivate : public QObject
 {
     Q_OBJECT
 public:
@@ -58,9 +58,11 @@ public:
     void loadPlugin(PluginSpec *spec, PluginSpec::State destState);
     void resolveDependencies();
     void enableDependenciesIndirectly();
-    void initProfiling();
-    void profilingSummary() const;
-    void profilingReport(const char *what, const PluginSpec *spec = nullptr);
+    void increaseProfilingVerbosity();
+    void enableTracing(const QString &filePath);
+    QString profilingSummary(qint64 *totalOut = nullptr) const;
+    void printProfilingSummary() const;
+    void profilingReport(const char *what, const PluginSpec *spec, qint64 *target = nullptr);
     void setSettings(Utils::QtcSettings *settings);
     void setGlobalSettings(Utils::QtcSettings *settings);
     void readSettings();
@@ -97,7 +99,7 @@ public:
     QStringList disabledPlugins;
     QStringList forceEnabledPlugins;
     // delayed initialization
-    QTimer *delayedInitializeTimer = nullptr;
+    std::unique_ptr<QTimer> delayedInitializeTimer;
     std::queue<PluginSpec *> delayedInitializeQueue;
     // ansynchronous shutdown
     QSet<PluginSpec *> asynchronousPlugins;  // plugins that have requested async shutdown
@@ -106,8 +108,9 @@ public:
     QStringList arguments;
     QStringList argumentsForRestart;
     QScopedPointer<QElapsedTimer> m_profileTimer;
-    QHash<const PluginSpec *, int> m_profileTotal;
-    int m_profileElapsedMS = 0;
+    qint64 m_profileElapsedMS = 0;
+    qint64 m_totalUntilDelayedInitialize = 0;
+    qint64 m_totalStartupMS = 0;
     unsigned m_profilingVerbosity = 0;
     Utils::QtcSettings *settings = nullptr;
     Utils::QtcSettings *globalSettings = nullptr;
@@ -140,7 +143,7 @@ public:
 private:
     PluginManager *q;
 
-    void nextDelayedInitialize();
+    void startDelayedInitialize();
 
     void readPluginPaths();
     bool loadQueue(PluginSpec *spec,

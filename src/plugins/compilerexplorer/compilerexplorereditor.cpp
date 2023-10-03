@@ -9,6 +9,7 @@
 
 #include <aggregation/aggregate.h>
 
+#include <coreplugin/actionmanager/actionmanager.h>
 #include <coreplugin/coreconstants.h>
 #include <coreplugin/icontext.h>
 #include <coreplugin/icore.h>
@@ -25,6 +26,7 @@
 #include <utils/layoutbuilder.h>
 #include <utils/mimetypes2/mimetype.h>
 #include <utils/mimeutils.h>
+#include <utils/store.h>
 #include <utils/utilsicons.h>
 
 #include <QCompleter>
@@ -37,6 +39,7 @@
 #include <QTemporaryFile>
 #include <QTimer>
 #include <QToolButton>
+#include <QUndoStack>
 
 #include <chrono>
 #include <iostream>
@@ -48,30 +51,36 @@ using namespace Utils;
 
 namespace CompilerExplorer {
 
-class CodeEditorWidget : public TextEditorWidget
+CodeEditorWidget::CodeEditorWidget(const std::shared_ptr<SourceSettings> &settings,
+                                   QUndoStack *undoStack)
+    : m_settings(settings)
+    , m_undoStack(undoStack){};
+
+void CodeEditorWidget::updateHighlighter()
 {
-public:
-    CodeEditorWidget(const std::shared_ptr<SourceSettings> &settings)
-        : m_settings(settings)
-    {}
+    const QString ext = m_settings->languageExtension();
+    if (ext.isEmpty())
+        return;
 
-    void updateHighlighter()
-    {
-        const QString ext = m_settings->languageExtension();
-        if (ext.isEmpty())
-            return;
-
-        Utils::MimeType mimeType = Utils::mimeTypeForFile("foo" + ext);
-        configureGenericHighlighter(mimeType);
-    }
-
-    std::shared_ptr<SourceSettings> m_settings;
-};
+    Utils::MimeType mimeType = Utils::mimeTypeForFile("foo" + ext);
+    configureGenericHighlighter(mimeType);
+}
 
 class SourceTextDocument : public TextDocument
 {
 public:
-    SourceTextDocument(const std::shared_ptr<SourceSettings> &settings)
+    class OpaqueUndoCommand : public QUndoCommand
+    {
+    public:
+        OpaqueUndoCommand(SourceTextDocument *doc)
+            : m_doc(doc)
+        {}
+        void undo() override { m_doc->undo(); }
+        void redo() override { m_doc->redo(); }
+        SourceTextDocument *m_doc;
+    };
+
+    SourceTextDocument(const std::shared_ptr<SourceSettings> &settings, QUndoStack *undoStack)
     {
         setPlainText(settings->source());
 
@@ -83,17 +92,28 @@ public:
             if (settings->source.volatileValue() != plainText())
                 setPlainText(settings->source.volatileValue());
         });
+
+        connect(this->document(), &QTextDocument::undoCommandAdded, this, [this, undoStack] {
+            undoStack->push(new OpaqueUndoCommand(this));
+        });
     }
+
+    void undo() { document()->undo(); }
+    void redo() { document()->redo(); }
 };
 
-JsonSettingsDocument::JsonSettingsDocument()
+JsonSettingsDocument::JsonSettingsDocument(QUndoStack *undoStack)
+    : m_undoStack(undoStack)
 {
     setId(Constants::CE_EDITOR_ID);
     setMimeType("application/compiler-explorer");
-    connect(&m_ceSettings, &CompilerExplorerSettings::changed, this, [this] { emit changed(); });
+    connect(&m_ceSettings, &CompilerExplorerSettings::changed, this, [this] {
+        emit changed();
+        emit contentsChanged();
+    });
+    m_ceSettings.setAutoApply(false);
+    m_ceSettings.setUndoStack(undoStack);
 }
-
-JsonSettingsDocument::~JsonSettingsDocument() {}
 
 Core::IDocument::OpenResult JsonSettingsDocument::open(QString *errorString,
                                                        const FilePath &filePath,
@@ -109,57 +129,51 @@ Core::IDocument::OpenResult JsonSettingsDocument::open(QString *errorString,
         return OpenResult::ReadError;
     }
 
-    QJsonParseError error;
-    QJsonDocument doc = QJsonDocument::fromJson(*contents, &error);
-    if (error.error != QJsonParseError::NoError) {
+    auto result = storeFromJson(*contents);
+    if (!result) {
         if (errorString)
-            *errorString = error.errorString();
-        return OpenResult::CannotHandle;
+            *errorString = result.error();
+        return OpenResult::ReadError;
     }
 
-    if (!doc.isObject()) {
-        if (errorString)
-            *errorString = Tr::tr("Not a valid JSON object.");
-        return OpenResult::CannotHandle;
-    }
+    setFilePath(filePath);
 
-    m_ceSettings.fromMap(storeFromVariant(doc.toVariant().toMap()));
+    m_ceSettings.fromMap(*result);
     emit settingsChanged();
     return OpenResult::Success;
 }
 
-bool JsonSettingsDocument::saveImpl(QString *errorString,
-                                    const FilePath &newFilePath,
-                                    bool autoSave)
+bool JsonSettingsDocument::saveImpl(QString *errorString, const FilePath &newFilePath, bool autoSave)
 {
-    Store map;
+    Store store;
 
     if (autoSave) {
         if (m_windowStateCallback)
             m_ceSettings.windowState.setVolatileValue(m_windowStateCallback());
 
-        m_ceSettings.volatileToMap(map);
+        m_ceSettings.volatileToMap(store);
     } else {
         if (m_windowStateCallback)
             m_ceSettings.windowState.setValue(m_windowStateCallback());
 
         m_ceSettings.apply();
-        m_ceSettings.toMap(map);
+        m_ceSettings.toMap(store);
     }
-
-    QJsonDocument doc = QJsonDocument::fromVariant(variantFromStore(map));
 
     Utils::FilePath path = newFilePath.isEmpty() ? filePath() : newFilePath;
 
-    if (!newFilePath.isEmpty() && !autoSave)
+    if (!newFilePath.isEmpty() && !autoSave) {
+        setPreferredDisplayName({});
         setFilePath(newFilePath);
+    }
 
-    auto result = path.writeFileContents(doc.toJson(QJsonDocument::Indented));
+    auto result = path.writeFileContents(jsonFromStore(store));
     if (!result && errorString) {
         *errorString = result.error();
         return false;
     }
 
+    emit changed();
     return true;
 }
 
@@ -170,24 +184,26 @@ bool JsonSettingsDocument::isModified() const
 
 bool JsonSettingsDocument::setContents(const QByteArray &contents)
 {
-    QJsonParseError error;
-    QJsonDocument doc = QJsonDocument::fromJson(contents, &error);
-    QTC_ASSERT(error.error == QJsonParseError::NoError, return false);
+    auto result = storeFromJson(contents);
+    QTC_ASSERT_EXPECTED(result, return false);
 
-    QTC_ASSERT(doc.isObject(), return false);
-
-    m_ceSettings.fromMap(storeFromVariant(doc.toVariant()));
+    m_ceSettings.fromMap(*result);
 
     emit settingsChanged();
+    emit changed();
+    emit contentsChanged();
     return true;
 }
 
-SourceEditorWidget::SourceEditorWidget(const std::shared_ptr<SourceSettings> &settings)
+SourceEditorWidget::SourceEditorWidget(const std::shared_ptr<SourceSettings> &settings,
+                                       QUndoStack *undoStack)
     : m_sourceSettings(settings)
 {
-    m_codeEditor = new CodeEditorWidget(m_sourceSettings);
+    m_codeEditor = new CodeEditorWidget(m_sourceSettings, undoStack);
 
-    TextDocumentPtr document = TextDocumentPtr(new SourceTextDocument(m_sourceSettings));
+    connect(m_codeEditor, &CodeEditorWidget::gotFocus, this, &SourceEditorWidget::gotFocus);
+
+    TextDocumentPtr document = TextDocumentPtr(new SourceTextDocument(m_sourceSettings, undoStack));
 
     connect(document.get(),
             &SourceTextDocument::changed,
@@ -199,11 +215,12 @@ SourceEditorWidget::SourceEditorWidget(const std::shared_ptr<SourceSettings> &se
 
     auto addCompilerButton = new QPushButton;
     addCompilerButton->setText(Tr::tr("Add compiler"));
-    connect(addCompilerButton, &QPushButton::clicked, this, [this] {
-        auto newCompiler = std::make_shared<CompilerSettings>(m_sourceSettings->apiConfigFunction());
-        newCompiler->setLanguageId(m_sourceSettings->languageId());
-        m_sourceSettings->compilers.addItem(newCompiler);
-    });
+    connect(addCompilerButton, &QPushButton::clicked, this, &SourceEditorWidget::addCompiler);
+
+    auto removeSourceButton = new QPushButton;
+    removeSourceButton->setIcon(Utils::Icons::EDIT_CLEAR.icon());
+    removeSourceButton->setToolTip(Tr::tr("Remove source"));
+    connect(removeSourceButton, &QPushButton::clicked, this, &SourceEditorWidget::remove);
 
     // clang-format off
     using namespace Layouting;
@@ -212,6 +229,7 @@ SourceEditorWidget::SourceEditorWidget(const std::shared_ptr<SourceSettings> &se
         Row {
             settings->languageId,
             addCompilerButton,
+            removeSourceButton,
         },
         m_codeEditor,
     }.attachTo(this);
@@ -219,13 +237,6 @@ SourceEditorWidget::SourceEditorWidget(const std::shared_ptr<SourceSettings> &se
 
     setWindowTitle("Source code");
     setObjectName("source_code");
-
-    Aggregate *agg = Aggregate::parentAggregate(m_codeEditor);
-    if (!agg) {
-        agg = new Aggregate;
-        agg->add(m_codeEditor);
-    }
-    agg->add(this);
 
     setFocusProxy(m_codeEditor);
 }
@@ -255,11 +266,14 @@ CompilerWidget::CompilerWidget(const std::shared_ptr<SourceSettings> &sourceSett
             m_delayTimer,
             qOverload<>(&QTimer::start));
 
-    m_asmEditor = new TextEditorWidget;
+    m_asmEditor = new AsmEditorWidget;
     m_asmDocument = QSharedPointer<TextDocument>(new TextDocument);
     m_asmDocument->setFilePath("asm.asm");
     m_asmEditor->setTextDocument(m_asmDocument);
     m_asmEditor->configureGenericHighlighter(Utils::mimeTypeForName("text/x-asm"));
+    m_asmEditor->setReadOnly(true);
+
+    connect(m_asmEditor, &AsmEditorWidget::gotFocus, this, &CompilerWidget::gotFocus);
 
     auto advButton = new QPushButton;
     QSplitter *splitter{nullptr};
@@ -280,6 +294,11 @@ CompilerWidget::CompilerWidget(const std::shared_ptr<SourceSettings> &sourceSett
     connect(advButton, &QPushButton::clicked, advDlg, &QAction::trigger);
     advButton->setIcon(advDlg->icon());
 
+    auto removeCompilerBtn = new QPushButton;
+    removeCompilerBtn->setIcon(Utils::Icons::EDIT_CLEAR.icon());
+    removeCompilerBtn->setToolTip(Tr::tr("Remove compiler"));
+    connect(removeCompilerBtn, &QPushButton::clicked, this, &CompilerWidget::remove);
+
     compile(m_sourceSettings->source());
 
     connect(&m_sourceSettings->source, &Utils::StringAspect::volatileValueChanged, this, [this] {
@@ -291,6 +310,7 @@ CompilerWidget::CompilerWidget(const std::shared_ptr<SourceSettings> &sourceSett
         Row {
             m_compilerSettings->compiler,
             advButton,
+            removeCompilerBtn,
         },
         Splitter {
             bindTo(&splitter),
@@ -301,11 +321,6 @@ CompilerWidget::CompilerWidget(const std::shared_ptr<SourceSettings> &sourceSett
     // clang-format on
 
     m_spinner = new SpinnerSolution::Spinner(SpinnerSolution::SpinnerSize::Large, this);
-}
-
-CompilerWidget::~CompilerWidget()
-{
-    qDebug() << "Good bye!";
 }
 
 Core::SearchableTerminal *CompilerWidget::createTerminal()
@@ -380,218 +395,108 @@ void CompilerWidget::doCompile()
 
     m_compileWatcher.reset(new QFutureWatcher<CompileResult>);
 
-    connect(
-        m_compileWatcher.get(), &QFutureWatcher<CompileResult>::finished, this, [this] {
-            m_spinner->setVisible(false);
-            m_asmEditor->setEnabled(true);
+    connect(m_compileWatcher.get(), &QFutureWatcher<CompileResult>::finished, this, [this] {
+        m_spinner->setVisible(false);
+        m_asmEditor->setEnabled(true);
 
-            try {
-                Api::CompileResult r = m_compileWatcher->result();
+        try {
+            Api::CompileResult r = m_compileWatcher->result();
 
-                m_resultTerminal->restart();
-                m_resultTerminal->writeToTerminal("\x1b[?25l", false);
+            m_resultTerminal->restart();
+            m_resultTerminal->writeToTerminal("\x1b[?25l", false);
 
-                for (const auto &err : r.stdErr)
+            for (const auto &err : r.stdErr)
+                m_resultTerminal->writeToTerminal((err.text + "\r\n").toUtf8(), false);
+            for (const auto &out : r.stdOut)
+                m_resultTerminal->writeToTerminal((out.text + "\r\n").toUtf8(), false);
+
+            m_resultTerminal->writeToTerminal(
+                QString("ASM generation compiler returned: %1\r\n\r\n").arg(r.code).toUtf8(), true);
+
+            if (r.execResult) {
+                for (const auto &err : r.execResult->buildResult.stdErr)
                     m_resultTerminal->writeToTerminal((err.text + "\r\n").toUtf8(), false);
-                for (const auto &out : r.stdOut)
+                for (const auto &out : r.execResult->buildResult.stdOut)
                     m_resultTerminal->writeToTerminal((out.text + "\r\n").toUtf8(), false);
 
-                m_resultTerminal->writeToTerminal(
-                    QString("ASM generation compiler returned: %1\r\n\r\n").arg(r.code).toUtf8(),
-                    true);
+                m_resultTerminal
+                    ->writeToTerminal(QString("Execution build compiler returned: %1\r\n\r\n")
+                                          .arg(r.execResult->buildResult.code)
+                                          .toUtf8(),
+                                      true);
 
-                if (r.execResult) {
-                    for (const auto &err : r.execResult->buildResult.stdErr)
-                        m_resultTerminal->writeToTerminal((err.text + "\r\n").toUtf8(), false);
-                    for (const auto &out : r.execResult->buildResult.stdOut)
-                        m_resultTerminal->writeToTerminal((out.text + "\r\n").toUtf8(), false);
+                if (r.execResult->didExecute) {
+                    m_resultTerminal->writeToTerminal(QString("Program returned: %1\r\n")
+                                                          .arg(r.execResult->code)
+                                                          .toUtf8(),
+                                                      true);
 
-                    m_resultTerminal
-                        ->writeToTerminal(QString("Execution build compiler returned: %1\r\n\r\n")
-                                              .arg(r.execResult->buildResult.code)
-                                              .toUtf8(),
-                                          true);
-
-                    if (r.execResult->didExecute) {
-                        m_resultTerminal->writeToTerminal(QString("Program returned: %1\r\n")
-                                                              .arg(r.execResult->code)
-                                                              .toUtf8(),
-                                                          true);
-
-                        for (const auto &err : r.execResult->stdErrLines)
-                            m_resultTerminal
-                                ->writeToTerminal(("  \033[0;31m" + err + "\033[0m\r\n").toUtf8(),
-                                                  false);
-                        for (const auto &out : r.execResult->stdOutLines)
-                            m_resultTerminal->writeToTerminal(("  " + out + "\r\n").toUtf8(), false);
-                    }
+                    for (const auto &err : r.execResult->stdErrLines)
+                        m_resultTerminal
+                            ->writeToTerminal(("  \033[0;31m" + err + "\033[0m\r\n\r\n").toUtf8(),
+                                              false);
+                    for (const auto &out : r.execResult->stdOutLines)
+                        m_resultTerminal->writeToTerminal((out + "\r\n").toUtf8(), false);
                 }
-                for (auto mark : m_marks) {
-                    delete mark;
-                }
-                m_marks.clear();
-
-                QString asmText;
-                for (auto l : r.assemblyLines)
-                    asmText += l.text + "\n";
-
-                m_asmDocument->setPlainText(asmText);
-
-                int i = 0;
-                for (auto l : r.assemblyLines) {
-                    i++;
-                    if (l.opcodes.empty())
-                        continue;
-
-                    auto mark = new TextMark(m_asmDocument.get(),
-                                             i,
-                                             TextMarkCategory{"Bytes", "Bytes"});
-                    mark->setLineAnnotation(l.opcodes.join(' '));
-                    m_marks.append(mark);
-                }
-            } catch (const std::exception &e) {
-                qCritical() << "Exception: " << e.what();
             }
-        });
+            qDeleteAll(m_marks);
+            m_marks.clear();
+
+            QString asmText;
+            for (auto l : r.assemblyLines)
+                asmText += l.text + "\n";
+
+            m_asmDocument->setPlainText(asmText);
+
+            int i = 0;
+            for (auto l : r.assemblyLines) {
+                i++;
+                if (l.opcodes.empty())
+                    continue;
+
+                auto mark = new TextMark(m_asmDocument.get(), i, TextMarkCategory{"Bytes", "Bytes"});
+                mark->setLineAnnotation(l.opcodes.join(' '));
+                m_marks.append(mark);
+            }
+        } catch (const std::exception &e) {
+            qCritical() << "Exception: " << e.what();
+        }
+    });
 
     m_compileWatcher->setFuture(f);
 }
 
-EditorWidget::EditorWidget(const QSharedPointer<JsonSettingsDocument> &document, QWidget *parent)
+EditorWidget::EditorWidget(const QSharedPointer<JsonSettingsDocument> &document,
+                           QUndoStack *undoStack,
+                           TextEditorActionHandler &actionHandler,
+                           QWidget *parent)
     : Utils::FancyMainWindow(parent)
     , m_document(document)
+    , m_undoStack(undoStack)
+    , m_actionHandler(actionHandler)
 {
+    setContextMenuPolicy(Qt::NoContextMenu);
     setAutoHideTitleBars(false);
     setDockNestingEnabled(true);
     setDocumentMode(true);
     setTabPosition(Qt::AllDockWidgetAreas, QTabWidget::TabPosition::South);
 
-    document->setWindowStateCallback([this] {
-        auto settings = saveSettings();
-        QVariantMap result;
+    document->setWindowStateCallback([this] { return storeFromMap(windowStateCallback()); });
 
-        for (const auto &key : settings.keys()) {
-            // QTBUG-116339
-            if (key != "State") {
-                result.insert(key, settings.value(key));
-            } else {
-                QVariantMap m;
-                m["type"] = "Base64";
-                m["value"] = settings.value(key).toByteArray().toBase64();
-                result.insert(key, m);
-            }
-        }
+    document->settings()->m_sources.setItemAddedCallback<SourceSettings>(
+        [this](const std::shared_ptr<SourceSettings> &source) { addSourceEditor(source); });
 
-        return result;
+    document->settings()->m_sources.setItemRemovedCallback<SourceSettings>(
+        [this](const std::shared_ptr<SourceSettings> &source) { removeSourceEditor(source); });
+
+    connect(document.get(),
+            &JsonSettingsDocument::settingsChanged,
+            this,
+            &EditorWidget::recreateEditors);
+
+    connect(this, &EditorWidget::gotFocus, this, [&actionHandler] {
+        actionHandler.updateCurrentEditor();
     });
-
-    auto addCompiler = [this](const std::shared_ptr<SourceSettings> &sourceSettings,
-                              const std::shared_ptr<CompilerSettings> &compilerSettings,
-                              int idx) {
-        auto compiler = new CompilerWidget(sourceSettings, compilerSettings);
-        compiler->setWindowTitle("Compiler #" + QString::number(idx));
-        compiler->setObjectName("compiler_" + QString::number(idx));
-        QDockWidget *dockWidget = addDockForWidget(compiler);
-        addDockWidget(Qt::RightDockWidgetArea, dockWidget);
-        m_compilerWidgets.append(dockWidget);
-    };
-
-    auto addSourceEditor = [this, document = document.get(), addCompiler](
-                               const std::shared_ptr<SourceSettings> &sourceSettings) {
-        auto sourceEditor = new SourceEditorWidget(sourceSettings);
-        sourceEditor->setWindowTitle("Source Code #" + QString::number(m_sourceWidgets.size() + 1));
-        sourceEditor->setObjectName("source_code_editor_"
-                                    + QString::number(m_sourceWidgets.size() + 1));
-
-        QDockWidget *dockWidget = addDockForWidget(sourceEditor);
-        connect(dockWidget,
-                &QDockWidget::visibilityChanged,
-                this,
-                [document, sourceSettings = sourceSettings.get(), dockWidget] {
-                    if (!dockWidget->isVisible())
-                        document->settings()->m_sources.removeItem(
-                            sourceSettings->shared_from_this());
-                });
-
-        addDockWidget(Qt::LeftDockWidgetArea, dockWidget);
-
-        sourceSettings->compilers.forEachItem(
-            [addCompiler, sourceSettings](const std::shared_ptr<CompilerSettings> &compilerSettings,
-                                          int idx) {
-                addCompiler(sourceSettings, compilerSettings, idx + 1);
-            });
-
-        sourceSettings->compilers.setItemAddedCallback(
-            [addCompiler, sourceSettings = sourceSettings.get()](
-                const std::shared_ptr<CompilerSettings> &compilerSettings) {
-                addCompiler(sourceSettings->shared_from_this(),
-                            compilerSettings,
-                            sourceSettings->compilers.size());
-            });
-
-        sourceSettings->compilers.setItemRemovedCallback(
-            [this](const std::shared_ptr<CompilerSettings> &compilerSettings) {
-                m_compilerWidgets.removeIf([compilerSettings](const QDockWidget *c) {
-                    return static_cast<CompilerWidget *>(c->widget())->m_compilerSettings
-                           == compilerSettings;
-                });
-            });
-
-        Aggregate *agg = Aggregate::parentAggregate(sourceEditor);
-        if (!agg) {
-            agg = new Aggregate;
-            agg->add(sourceEditor);
-        }
-        agg->add(this);
-
-        setFocusProxy(sourceEditor);
-
-        m_sourceWidgets.append(dockWidget);
-    };
-
-    auto removeSourceEditor = [this](const std::shared_ptr<SourceSettings> &sourceSettings) {
-        m_sourceWidgets.removeIf([sourceSettings = sourceSettings.get()](const QDockWidget *c) {
-            return static_cast<SourceEditorWidget *>(c->widget())->m_sourceSettings
-                   == sourceSettings->shared_from_this();
-        });
-    };
-
-    auto recreateEditors = [this, addSourceEditor]() {
-        qDeleteAll(m_sourceWidgets);
-        qDeleteAll(m_compilerWidgets);
-
-        m_sourceWidgets.clear();
-        m_compilerWidgets.clear();
-
-        m_document->settings()->m_sources.forEachItem(addSourceEditor);
-        QVariantMap windowState = m_document->settings()->windowState.value();
-
-        if (!windowState.isEmpty()) {
-            QHash<QString, QVariant> hashMap;
-            for (const auto &key : windowState.keys()) {
-                if (key != "State")
-                    hashMap.insert(key, windowState.value(key));
-                else {
-                    QVariant v = windowState.value(key);
-                    if (v.userType() == QMetaType::QByteArray) {
-                        hashMap.insert(key, v);
-                    } else if (v.userType() == QMetaType::QVariantMap) {
-                        QVariantMap m = v.toMap();
-                        if (m.value("type") == "Base64") {
-                            hashMap.insert(key,
-                                           QByteArray::fromBase64(m.value("value").toByteArray()));
-                        }
-                    }
-                }
-            }
-
-            restoreSettings(hashMap);
-        }
-    };
-
-    document->settings()->m_sources.setItemAddedCallback(addSourceEditor);
-    document->settings()->m_sources.setItemRemovedCallback(removeSourceEditor);
-    connect(document.get(), &JsonSettingsDocument::settingsChanged, this, recreateEditors);
 
     m_context = new Core::IContext(this);
     m_context->setWidget(this);
@@ -605,21 +510,262 @@ EditorWidget::~EditorWidget()
     m_sourceWidgets.clear();
 }
 
+void EditorWidget::focusInEvent(QFocusEvent *event)
+{
+    emit gotFocus();
+    FancyMainWindow::focusInEvent(event);
+}
+
+void EditorWidget::addCompiler(const std::shared_ptr<SourceSettings> &sourceSettings,
+                               const std::shared_ptr<CompilerSettings> &compilerSettings,
+                               int idx,
+                               QDockWidget *parentDockWidget)
+{
+    auto compiler = new CompilerWidget(sourceSettings, compilerSettings);
+    compiler->setWindowTitle("Compiler #" + QString::number(idx));
+    compiler->setObjectName("compiler_" + QString::number(idx));
+    QDockWidget *dockWidget = addDockForWidget(compiler, parentDockWidget);
+    dockWidget->setFeatures(QDockWidget::DockWidgetFloatable | QDockWidget::DockWidgetMovable);
+    addDockWidget(Qt::RightDockWidgetArea, dockWidget);
+    m_compilerWidgets.append(dockWidget);
+
+    connect(compiler,
+            &CompilerWidget::remove,
+            this,
+            [sourceSettings = sourceSettings.get(), compilerSettings = compilerSettings.get()] {
+                sourceSettings->compilers.removeItem(compilerSettings->shared_from_this());
+            });
+
+    connect(compiler, &CompilerWidget::gotFocus, this, [this]() {
+        m_actionHandler.updateCurrentEditor();
+    });
+}
+
+QVariantMap EditorWidget::windowStateCallback()
+{
+    auto settings = saveSettings();
+    QVariantMap result;
+
+    for (const Key &key : settings.keys()) {
+        // QTBUG-116339
+        if (stringFromKey(key) != "State") {
+            result.insert(stringFromKey(key), settings.value(key));
+        } else {
+            QVariantMap m;
+            m["type"] = "Base64";
+            m["value"] = settings.value(key).toByteArray().toBase64();
+            result.insert(stringFromKey(key), m);
+        }
+    }
+
+    return result;
+}
+
+void EditorWidget::addSourceEditor(const std::shared_ptr<SourceSettings> &sourceSettings)
+{
+    auto sourceEditor = new SourceEditorWidget(sourceSettings, m_undoStack);
+    sourceEditor->setWindowTitle("Source Code #" + QString::number(m_sourceWidgets.size() + 1));
+    sourceEditor->setObjectName("source_code_editor_" + QString::number(m_sourceWidgets.size() + 1));
+
+    QDockWidget *dockWidget = addDockForWidget(sourceEditor);
+    connect(sourceEditor, &SourceEditorWidget::remove, this, [this, sourceSettings]() {
+        m_undoStack->beginMacro("Remove source");
+        sourceSettings->compilers.clear();
+        m_document->settings()->m_sources.removeItem(sourceSettings->shared_from_this());
+        m_undoStack->endMacro();
+
+        setupHelpWidget();
+    });
+
+    connect(sourceEditor, &SourceEditorWidget::addCompiler, this, [sourceSettings]() {
+        auto newCompiler = std::make_shared<CompilerSettings>(sourceSettings->apiConfigFunction());
+        newCompiler->setLanguageId(sourceSettings->languageId());
+        sourceSettings->compilers.addItem(newCompiler);
+    });
+
+    connect(sourceEditor, &SourceEditorWidget::gotFocus, this, [this]() {
+        m_actionHandler.updateCurrentEditor();
+    });
+
+    dockWidget->setFeatures(QDockWidget::DockWidgetFloatable | QDockWidget::DockWidgetMovable);
+    addDockWidget(Qt::LeftDockWidgetArea, dockWidget);
+
+    sourceSettings->compilers.forEachItem<CompilerSettings>(
+        [this, sourceSettings, dockWidget](const std::shared_ptr<CompilerSettings> &compilerSettings,
+                                           int idx) {
+            addCompiler(sourceSettings, compilerSettings, idx + 1, dockWidget);
+        });
+
+    sourceSettings->compilers.setItemAddedCallback<CompilerSettings>(
+        [this, sourceSettings, dockWidget](
+            const std::shared_ptr<CompilerSettings> &compilerSettings) {
+            addCompiler(sourceSettings->shared_from_this(),
+                        compilerSettings,
+                        sourceSettings->compilers.size(),
+                        dockWidget);
+        });
+
+    sourceSettings->compilers.setItemRemovedCallback<CompilerSettings>(
+        [this, sourceSettings](const std::shared_ptr<CompilerSettings> &compilerSettings) {
+            auto it = std::find_if(m_compilerWidgets.begin(),
+                                   m_compilerWidgets.end(),
+                                   [compilerSettings](const QDockWidget *c) {
+                                       return static_cast<CompilerWidget *>(c->widget())
+                                                  ->m_compilerSettings
+                                              == compilerSettings;
+                                   });
+            QTC_ASSERT(it != m_compilerWidgets.end(), return);
+            delete *it;
+            m_compilerWidgets.erase(it);
+        });
+
+    m_sourceWidgets.append(dockWidget);
+
+    setupHelpWidget();
+}
+
+void EditorWidget::removeSourceEditor(const std::shared_ptr<SourceSettings> &sourceSettings)
+{
+    auto it
+        = std::find_if(m_sourceWidgets.begin(),
+                       m_sourceWidgets.end(),
+                       [sourceSettings](const QDockWidget *c) {
+                           return static_cast<SourceEditorWidget *>(c->widget())->sourceSettings()
+                                  == sourceSettings.get();
+                       });
+    QTC_ASSERT(it != m_sourceWidgets.end(), return);
+    delete *it;
+    m_sourceWidgets.erase(it);
+}
+
+void EditorWidget::recreateEditors()
+{
+    qDeleteAll(m_sourceWidgets);
+    qDeleteAll(m_compilerWidgets);
+
+    m_sourceWidgets.clear();
+    m_compilerWidgets.clear();
+
+    m_document->settings()->m_sources.forEachItem<SourceSettings>(
+        [this](const auto &sourceSettings) { addSourceEditor(sourceSettings); });
+
+    Store windowState = m_document->settings()->windowState.value();
+
+    if (!windowState.isEmpty()) {
+        QHash<Key, QVariant> hashMap;
+        for (const auto &key : windowState.keys()) {
+            if (key.view() != "State")
+                hashMap.insert(key, windowState.value(key));
+            else {
+                QVariant v = windowState.value(key);
+                if (v.userType() == QMetaType::QByteArray) {
+                    hashMap.insert(key, v);
+                } else if (v.userType() == QMetaType::QVariantMap) {
+                    QVariantMap m = v.toMap();
+                    if (m.value("type") == "Base64") {
+                        hashMap.insert(key, QByteArray::fromBase64(m.value("value").toByteArray()));
+                    }
+                }
+            }
+        }
+
+        restoreSettings(hashMap);
+    }
+}
+
+void EditorWidget::setupHelpWidget()
+{
+    if (m_document->settings()->m_sources.size() == 0) {
+        setCentralWidget(createHelpWidget());
+    } else {
+        delete takeCentralWidget();
+    }
+}
+
+QWidget *EditorWidget::createHelpWidget() const
+{
+    using namespace Layouting;
+
+    auto addSourceButton = new QPushButton(Tr::tr("Add source code"));
+    connect(addSourceButton, &QPushButton::clicked, this, [this] {
+        auto newSource = std::make_shared<SourceSettings>(
+            [settings = m_document->settings()] { return settings->apiConfig(); });
+        m_document->settings()->m_sources.addItem(newSource);
+    });
+
+    // clang-format off
+    return Column {
+        st,
+        Row {
+            st,
+            Column {
+                Tr::tr("No source code added yet. Add one using the button below."),
+                Row { st, addSourceButton, st }
+            },
+            st,
+        },
+        st,
+    }.emerge();
+    // clang-format on
+}
+
+TextEditor::TextEditorWidget *EditorWidget::focusedEditorWidget() const
+{
+    for (const QDockWidget *sourceWidget : m_sourceWidgets) {
+        TextEditorWidget *textEditor
+            = qobject_cast<SourceEditorWidget *>(sourceWidget->widget())->textEditor();
+        if (textEditor->hasFocus())
+            return textEditor;
+    }
+
+    for (const QDockWidget *compilerWidget : m_compilerWidgets) {
+        TextEditorWidget *textEditor
+            = qobject_cast<CompilerWidget *>(compilerWidget->widget())->textEditor();
+        if (textEditor->hasFocus())
+            return textEditor;
+    }
+
+    return nullptr;
+}
+
 class Editor : public Core::IEditor
 {
 public:
-    Editor()
-        : m_document(new JsonSettingsDocument())
+    Editor(TextEditorActionHandler &actionHandler)
+        : m_document(new JsonSettingsDocument(&m_undoStack))
     {
-        setWidget(new EditorWidget(m_document));
+        setWidget(new EditorWidget(m_document, &m_undoStack, actionHandler));
+
+        connect(&m_undoStack, &QUndoStack::canUndoChanged, this, [&actionHandler] {
+            actionHandler.updateActions();
+        });
+        connect(&m_undoStack, &QUndoStack::canRedoChanged, this, [&actionHandler] {
+            actionHandler.updateActions();
+        });
     }
 
-    ~Editor() { delete widget(); }
+    ~Editor()
+    {
+        if (m_document->isModified()) {
+            auto settings = m_document->settings();
+            if (settings->isDirty()) {
+                settings->apply();
+                Utils::Store store;
+                settings->toMap(store);
+                QJsonDocument doc = QJsonDocument::fromVariant(Utils::mapFromStore(store));
+
+                CompilerExplorer::settings().defaultDocument.setValue(
+                    QString::fromUtf8(doc.toJson()));
+            }
+        }
+        delete widget();
+    }
 
     Core::IDocument *document() const override { return m_document.data(); }
     QWidget *toolBar() override { return nullptr; }
 
     QSharedPointer<JsonSettingsDocument> m_document;
+    QUndoStack m_undoStack;
 };
 
 EditorFactory::EditorFactory()
@@ -627,14 +773,32 @@ EditorFactory::EditorFactory()
                       Constants::CE_EDITOR_CONTEXT_ID,
                       TextEditor::TextEditorActionHandler::None,
                       [](Core::IEditor *editor) -> TextEditorWidget * {
-                          return Aggregation::query<TextEditorWidget>(editor->widget());
+                          return static_cast<EditorWidget *>(editor->widget())->focusedEditorWidget();
                       })
 {
     setId(Constants::CE_EDITOR_ID);
     setDisplayName(Tr::tr("Compiler Explorer Editor"));
     setMimeTypes({"application/compiler-explorer"});
 
-    setEditorCreator([]() { return new Editor(); });
+    auto undoStackFromEditor = [](Core::IEditor *editor) -> QUndoStack * {
+        if (!editor)
+            return nullptr;
+        return &static_cast<Editor *>(editor)->m_undoStack;
+    };
+
+    m_actionHandler.setCanUndoCallback([undoStackFromEditor](Core::IEditor *editor) {
+        if (auto undoStack = undoStackFromEditor(editor))
+            return undoStack->canUndo();
+        return false;
+    });
+
+    m_actionHandler.setCanRedoCallback([undoStackFromEditor](Core::IEditor *editor) {
+        if (auto undoStack = undoStackFromEditor(editor))
+            return undoStack->canRedo();
+        return false;
+    });
+
+    setEditorCreator([this]() { return new Editor(m_actionHandler); });
 }
 
 } // namespace CompilerExplorer

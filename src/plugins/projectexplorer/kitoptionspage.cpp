@@ -1,6 +1,8 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
+#include "kitoptionspage.h"
+
 #include "filterkitaspectsdialog.h"
 #include "kit.h"
 #include "kitmanager.h"
@@ -13,7 +15,6 @@
 #include <utils/algorithm.h>
 #include <utils/id.h>
 #include <utils/qtcassert.h>
-#include <utils/treemodel.h>
 #include <utils/utilsicons.h>
 
 #include <QApplication>
@@ -27,7 +28,27 @@
 
 using namespace Utils;
 
-namespace ProjectExplorer::Internal {
+namespace ProjectExplorer {
+
+bool KitSettingsSortModel::lessThan(const QModelIndex &source_left,
+                                    const QModelIndex &source_right) const
+{
+    const auto defaultCmp = [&] { return SortModel::lessThan(source_left, source_right); };
+
+    if (m_sortedCategories.isEmpty() || source_left.parent().isValid())
+        return defaultCmp();
+
+    QTC_ASSERT(!source_right.parent().isValid(), return defaultCmp());
+    const int leftIndex = m_sortedCategories.indexOf(sourceModel()->data(source_left));
+    QTC_ASSERT(leftIndex != -1, return defaultCmp());
+    if (leftIndex == 0)
+        return true;
+    const int rightIndex = m_sortedCategories.indexOf(sourceModel()->data(source_right));
+    QTC_ASSERT(rightIndex != -1, return defaultCmp());
+    return leftIndex < rightIndex;
+}
+
+namespace Internal {
 
 // Page pre-selection
 
@@ -176,6 +197,7 @@ signals:
     void kitStateChanged();
 
 private:
+    void initializeFromKitManager();
     void addKit(Kit *k);
     void updateKit(Kit *k);
     void removeKit(Kit *k);
@@ -206,10 +228,11 @@ KitModel::KitModel(QBoxLayout *parentLayout, QObject *parent)
     rootItem()->appendChild(m_autoRoot);
     rootItem()->appendChild(m_manualRoot);
 
-    for (Kit *k : KitManager::sortedKits())
-        addKit(k);
-
-    changeDefaultKit();
+    if (KitManager::isLoaded()) {
+        for (Kit *k : KitManager::sortedKits())
+            addKit(k);
+        changeDefaultKit();
+    }
 
     connect(KitManager::instance(), &KitManager::kitAdded,
             this, &KitModel::addKit);
@@ -283,6 +306,8 @@ void KitModel::validateKitNames()
 
 void KitModel::apply()
 {
+    emit layoutAboutToBeChanged();
+
     // Add/update dirty nodes before removing kits. This ensures the right kit ends up as default.
     forItemsAtLevel<2>([](KitNode *n) {
         if (n->isDirty()) {
@@ -473,6 +498,7 @@ public:
     QPushButton *m_defaultFilterButton = nullptr;
 
     KitModel *m_model = nullptr;
+    KitSettingsSortModel *m_sortModel = nullptr;
     QItemSelectionModel *m_selectionModel = nullptr;
     KitManagerConfigWidget *m_currentWidget = nullptr;
 };
@@ -517,10 +543,15 @@ KitOptionsPageWidget::KitOptionsPageWidget()
             this, &KitOptionsPageWidget::updateState);
     verticalLayout->setStretch(0, 1);
     verticalLayout->setStretch(1, 0);
+    m_sortModel = new KitSettingsSortModel(this);
+    m_sortModel->setSortedCategories({Constants::msgAutoDetected(), Constants::msgManual()});
+    m_sortModel->setSourceModel(m_model);
 
-    m_kitsView->setModel(m_model);
+    m_kitsView->setModel(m_sortModel);
     m_kitsView->header()->setSectionResizeMode(0, QHeaderView::Stretch);
     m_kitsView->expandAll();
+    m_kitsView->setSortingEnabled(true);
+    m_kitsView->sortByColumn(0, Qt::AscendingOrder);
 
     m_selectionModel = m_kitsView->selectionModel();
     connect(m_selectionModel, &QItemSelectionModel::selectionChanged,
@@ -564,7 +595,7 @@ KitOptionsPageWidget::KitOptionsPageWidget()
 
 void KitOptionsPageWidget::scrollToSelectedKit()
 {
-    QModelIndex index = m_model->indexOf(selectedKitId);
+    QModelIndex index = m_sortModel->mapFromSource(m_model->indexOf(selectedKitId));
     m_selectionModel->select(index,
                              QItemSelectionModel::Clear
                                  | QItemSelectionModel::SelectCurrent
@@ -575,7 +606,7 @@ void KitOptionsPageWidget::scrollToSelectedKit()
 void KitOptionsPageWidget::kitSelectionChanged()
 {
     QModelIndex current = currentIndex();
-    KitManagerConfigWidget * const newWidget = m_model->widget(current);
+    KitManagerConfigWidget * const newWidget = m_model->widget(m_sortModel->mapToSource(current));
     if (newWidget == m_currentWidget)
         return;
 
@@ -596,7 +627,7 @@ void KitOptionsPageWidget::addNewKit()
 {
     Kit *k = m_model->markForAddition(nullptr);
 
-    QModelIndex newIdx = m_model->indexOf(k);
+    QModelIndex newIdx = m_sortModel->mapFromSource(m_model->indexOf(k));
     m_selectionModel->select(newIdx,
                              QItemSelectionModel::Clear
                              | QItemSelectionModel::SelectCurrent
@@ -605,7 +636,7 @@ void KitOptionsPageWidget::addNewKit()
 
 Kit *KitOptionsPageWidget::currentKit() const
 {
-    return m_model->kit(currentIndex());
+    return m_model->kit(m_sortModel->mapToSource(currentIndex()));
 }
 
 void KitOptionsPageWidget::cloneKit()
@@ -615,7 +646,7 @@ void KitOptionsPageWidget::cloneKit()
         return;
 
     Kit *k = m_model->markForAddition(current);
-    QModelIndex newIdx = m_model->indexOf(k);
+    QModelIndex newIdx = m_sortModel->mapFromSource(m_model->indexOf(k));
     m_kitsView->scrollTo(newIdx);
     m_selectionModel->select(newIdx,
                              QItemSelectionModel::Clear
@@ -631,7 +662,7 @@ void KitOptionsPageWidget::removeKit()
 
 void KitOptionsPageWidget::makeDefaultKit()
 {
-    m_model->setDefaultKit(currentIndex());
+    m_model->setDefaultKit(m_sortModel->mapToSource(currentIndex()));
     updateState();
 }
 
@@ -706,6 +737,7 @@ public:
 
 const KitsSettingsPage theKitsSettingsPage;
 
-} // ProjectExplorer::Internal
+} // Internal
+} // ProjectExplorer
 
 #include "kitoptionspage.moc"

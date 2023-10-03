@@ -15,11 +15,9 @@
 #include <utils/qtcassert.h>
 #include <utils/utilsicons.h>
 
+#include <QAction>
 #include <QCoreApplication>
 #include <QDebug>
-#include <QSettings>
-
-#include <QAction>
 #include <QHBoxLayout>
 #include <QResizeEvent>
 #include <QStandardItemModel>
@@ -407,7 +405,7 @@ void NavigationWidget::saveSettings(QtcSettings *settings)
     }
 }
 
-void NavigationWidget::restoreSettings(QSettings *settings)
+void NavigationWidget::restoreSettings(QtcSettings *settings)
 {
     if (!d->m_factoryModel->rowCount()) {
         // We have no widgets to show!
@@ -475,7 +473,7 @@ void NavigationWidget::restoreSettings(QSettings *settings)
         if (!key.startsWith(activationKey))
             continue;
 
-        int position = settings->value(key).toInt();
+        int position = settings->value(keyFromString(key)).toInt();
         Id factoryId = Id::fromString(key.mid(activationKey.length()));
         NavigationWidgetPrivate::updateActivationsMap(factoryId, {d->m_side, position});
     }

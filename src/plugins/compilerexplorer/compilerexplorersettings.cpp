@@ -77,7 +77,7 @@ SourceSettings::SourceSettings(const ApiConfigFunction &apiConfigFunction)
         auto result = std::make_shared<CompilerSettings>(apiConfigFunction);
         connect(this, &SourceSettings::languagesChanged, result.get(), &CompilerSettings::refresh);
         connect(&languageId,
-                &StringSelectionAspect::changed,
+                &Utils::StringSelectionAspect::changed,
                 result.get(),
                 [this, result = result.get()] { result->setLanguageId(languageId()); });
 
@@ -87,19 +87,12 @@ SourceSettings::SourceSettings(const ApiConfigFunction &apiConfigFunction)
         return result;
     });
 
-    compilers.setToBaseAspectFunction([](const std::shared_ptr<CompilerSettings> &item) {
-        return static_cast<Utils::BaseAspect *>(item.get());
-    });
-    compilers.setIsDirtyFunction(
-        [](const std::shared_ptr<CompilerSettings> &settings) { return settings->isDirty(); });
-    compilers.setApplyFunction(
-        [](const std::shared_ptr<CompilerSettings> &settings) { settings->apply(); });
-
-    for (const auto &aspect : this->aspects())
+    for (const auto &aspect : this->aspects()) {
         connect(aspect,
                 &Utils::BaseAspect::volatileValueChanged,
                 this,
-                &CompilerExplorerSettings::changed);
+                &Utils::AspectContainer::changed);
+    }
 }
 
 void SourceSettings::refresh()
@@ -108,7 +101,7 @@ void SourceSettings::refresh()
     cachedLanguages().clear();
     languageId.refill();
 
-    compilers.forEachItem(&CompilerSettings::refresh);
+    compilers.forEachItem<CompilerSettings>(&CompilerSettings::refresh);
 }
 
 QString SourceSettings::languageExtension() const
@@ -154,11 +147,12 @@ CompilerSettings::CompilerSettings(const ApiConfigFunction &apiConfigFunction)
     demangleIdentifiers.setLabelText(Tr::tr("Demangle identifiers"));
     demangleIdentifiers.setDefaultValue(true);
 
-    for (const auto &aspect : this->aspects())
+    for (const auto &aspect : this->aspects()) {
         connect(aspect,
                 &Utils::BaseAspect::volatileValueChanged,
                 this,
-                &CompilerExplorerSettings::changed);
+                &Utils::AspectContainer::changed);
+    }
 }
 
 void CompilerSettings::refresh()
@@ -184,7 +178,7 @@ void CompilerSettings::setLanguageId(const QString &languageId)
         compilerOptions.setValue("");
 }
 
-void CompilerSettings::fillLibraries(LibrarySelectionAspect::ResultCallback cb)
+void CompilerSettings::fillLibraries(const LibrarySelectionAspect::ResultCallback &cb)
 {
     const QString lang = m_languageId;
     auto fillFromCache = [cb, lang] {
@@ -220,7 +214,7 @@ void CompilerSettings::fillLibraries(LibrarySelectionAspect::ResultCallback cb)
                      });
 }
 
-void SourceSettings::fillLanguageIdModel(StringSelectionAspect::ResultCallback cb)
+void SourceSettings::fillLanguageIdModel(const Utils::StringSelectionAspect::ResultCallback &cb)
 {
     auto fillFromCache = [cb, this] {
         QList<QStandardItem *> items;
@@ -228,7 +222,7 @@ void SourceSettings::fillLanguageIdModel(StringSelectionAspect::ResultCallback c
             auto *newItem = new QStandardItem(language.name);
             newItem->setData(language.id);
 
-            if (QFile::exists(":/compilerexplorer/logos/" + language.logoUrl)) {
+            if (QFileInfo::exists(":/compilerexplorer/logos/" + language.logoUrl)) {
                 QIcon icon(":/compilerexplorer/logos/" + language.logoUrl);
                 newItem->setIcon(icon);
             }
@@ -262,7 +256,7 @@ void SourceSettings::fillLanguageIdModel(StringSelectionAspect::ResultCallback c
                      });
 }
 
-void CompilerSettings::fillCompilerModel(StringSelectionAspect::ResultCallback cb)
+void CompilerSettings::fillCompilerModel(const Utils::StringSelectionAspect::ResultCallback &cb)
 {
     auto fillFromCache = [cb](auto it) {
         QList<QStandardItem *> items;
@@ -328,23 +322,17 @@ CompilerExplorerSettings::CompilerExplorerSettings()
                 &CompilerExplorerSettings::changed);
         return newSourceSettings;
     });
-    m_sources.setIsDirtyFunction(
-        [](const std::shared_ptr<SourceSettings> &settings) { return settings->isDirty(); });
-    m_sources.setApplyFunction(
-        [](const std::shared_ptr<SourceSettings> &settings) { settings->apply(); });
-    m_sources.setToBaseAspectFunction([](const std::shared_ptr<SourceSettings> &item) {
-        return static_cast<Utils::BaseAspect *>(item.get());
-    });
 
     connect(&compilerExplorerUrl, &Utils::StringAspect::volatileValueChanged, this, [this] {
-        m_sources.forEachItem(&SourceSettings::refresh);
+        m_sources.forEachItem<SourceSettings>(&SourceSettings::refresh);
     });
 
-    for (const auto &aspect : this->aspects())
+    for (const auto &aspect : this->aspects()) {
         connect(aspect,
                 &Utils::BaseAspect::volatileValueChanged,
                 this,
                 &CompilerExplorerSettings::changed);
+    }
 }
 
 CompilerExplorerSettings::~CompilerExplorerSettings() = default;

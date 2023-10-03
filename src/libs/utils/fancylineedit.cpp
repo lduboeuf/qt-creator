@@ -7,8 +7,8 @@
 #include "execmenu.h"
 #include "historycompleter.h"
 #include "hostosinfo.h"
+#include "icon.h"
 #include "qtcassert.h"
-#include "utilsicons.h"
 #include "utilstr.h"
 
 #include <solutions/spinner/spinner.h>
@@ -102,7 +102,7 @@ public:
     bool eventFilter(QObject *obj, QEvent *event) override;
 
     FancyLineEdit *m_lineEdit;
-    IconButton *m_iconbutton[2];
+    FancyIconButton *m_iconbutton[2];
     HistoryCompleter *m_historyCompleter = nullptr;
     QShortcut m_completionShortcut;
     FancyLineEdit::ValidationFunction m_validationFunction = &FancyLineEdit::validateWithValidator;
@@ -151,7 +151,7 @@ FancyLineEditPrivate::FancyLineEditPrivate(FancyLineEdit *parent)
             &m_completionShortcut, &QShortcut::setKey);
 
     for (int i = 0; i < 2; ++i) {
-        m_iconbutton[i] = new IconButton(parent);
+        m_iconbutton[i] = new FancyIconButton(parent);
         m_iconbutton[i]->installEventFilter(this);
         m_iconbutton[i]->hide();
         m_iconbutton[i]->setAutoHide(false);
@@ -431,13 +431,9 @@ void FancyLineEdit::setFiltering(bool on)
         // KDE has custom icons for this. Notice that icon namings are counter intuitive.
         // If these icons are not available we use the freedesktop standard name before
         // falling back to a bundled resource.
-        QIcon icon = QIcon::fromTheme(layoutDirection() == Qt::LeftToRight ?
-                         QLatin1String("edit-clear-locationbar-rtl") :
-                         QLatin1String("edit-clear-locationbar-ltr"),
-                         QIcon::fromTheme(QLatin1String("edit-clear"),
-                                          Icons::EDIT_CLEAR.icon()));
-
-        setButtonIcon(Right, icon);
+        static const QIcon rtl = Icon::fromTheme("edit-clear-locationbar-rtl");
+        static const QIcon ltr = Icon::fromTheme("edit-clear-locationbar-ltr");
+        setButtonIcon(Right, layoutDirection() == Qt::LeftToRight ? ltr : rtl);
         setButtonVisible(Right, true);
         setPlaceholderText(Tr::tr("Filter"));
         setButtonToolTip(Right, Tr::tr("Clear text"));
@@ -623,14 +619,14 @@ QString FancyLineEdit::fixInputString(const QString &string)
 // IconButton - helper class to represent a clickable icon
 //
 
-IconButton::IconButton(QWidget *parent)
-    : QAbstractButton(parent), m_autoHide(false)
+FancyIconButton::FancyIconButton(QWidget *parent)
+    : QAbstractButton(parent)
 {
     setCursor(Qt::ArrowCursor);
     setFocusPolicy(Qt::NoFocus);
 }
 
-void IconButton::paintEvent(QPaintEvent *)
+void FancyIconButton::paintEvent(QPaintEvent *)
 {
     const qreal pixelRatio = window()->windowHandle()->devicePixelRatio();
     const QPixmap iconPixmap = icon().pixmap(sizeHint(), pixelRatio,
@@ -657,7 +653,7 @@ void IconButton::paintEvent(QPaintEvent *)
     }
 }
 
-void IconButton::animateShow(bool visible)
+void FancyIconButton::animateShow(bool visible)
 {
     QPropertyAnimation *animation = new QPropertyAnimation(this, "iconOpacity");
     animation->setDuration(FADE_TIME);
@@ -665,13 +661,13 @@ void IconButton::animateShow(bool visible)
     animation->start(QAbstractAnimation::DeleteWhenStopped);
 }
 
-QSize IconButton::sizeHint() const
+QSize FancyIconButton::sizeHint() const
 {
     QWindow *window = this->window()->windowHandle();
     return icon().actualSize(window, QSize(32, 16)); // Find flags icon can be wider than 16px
 }
 
-void IconButton::keyPressEvent(QKeyEvent *ke)
+void FancyIconButton::keyPressEvent(QKeyEvent *ke)
 {
     QAbstractButton::keyPressEvent(ke);
     if (!ke->modifiers() && (ke->key() == Qt::Key_Enter || ke->key() == Qt::Key_Return))
@@ -680,7 +676,7 @@ void IconButton::keyPressEvent(QKeyEvent *ke)
     ke->accept();
 }
 
-void IconButton::keyReleaseEvent(QKeyEvent *ke)
+void FancyIconButton::keyReleaseEvent(QKeyEvent *ke)
 {
     QAbstractButton::keyReleaseEvent(ke);
     // do not forward to line edit

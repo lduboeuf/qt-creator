@@ -32,7 +32,6 @@
 #include <coreplugin/modemanager.h>
 
 #include <QAction>
-#include <QCollator>
 #include <QGuiApplication>
 #include <QItemDelegate>
 #include <QKeyEvent>
@@ -141,18 +140,8 @@ private:
 
 static bool compareItems(const TreeItem *ti1, const TreeItem *ti2)
 {
-    static const QCollator collator = [] {
-        QCollator collator;
-        collator.setNumericMode(true);
-        collator.setCaseSensitivity(Qt::CaseInsensitive);
-        return collator;
-    }();
-
-    const int result = collator.compare(static_cast<const GenericItem *>(ti1)->rawDisplayName(),
-                                        static_cast<const GenericItem *>(ti2)->rawDisplayName());
-    if (result != 0)
-        return result < 0;
-    return ti1 < ti2;
+    return caseFriendlyCompare(static_cast<const GenericItem *>(ti1)->rawDisplayName(),
+                               static_cast<const GenericItem *>(ti2)->rawDisplayName()) < 0;
 }
 
 class GenericModel : public TreeModel<GenericItem, GenericItem>
@@ -499,7 +488,6 @@ SelectorView::SelectorView(QWidget *parent) : TreeView(parent)
     setFocusPolicy(Qt::NoFocus);
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setAlternatingRowColors(false);
-    setUniformRowHeights(true);
     setIndentation(0);
     setFocusPolicy(Qt::WheelFocus);
     setItemDelegate(new TargetSelectorDelegate(this));
@@ -932,13 +920,12 @@ void MiniProjectTargetSelector::doLayout(bool keepSize)
         if (keepSize) {
             heightWithoutKitArea = height() - oldSummaryLabelY + 1;
         } else {
-            // Clamp the size of the listwidgets to be
-            // at least as high as the sidebar button
-            // and at most twice as high
+            // Clamp the size of the listwidgets to be at least as high as the sidebar button
+            // and at most half the height of the entire Qt Creator window.
             heightWithoutKitArea = summaryLabelHeight
                     + qBound(alignedWithActionHeight,
                              maxItemCount * 30 + bottomMargin + titleWidgetsHeight,
-                             alignedWithActionHeight * 2);
+                             Core::ICore::mainWindow()->height() / 2);
         }
 
         int titleY = summaryLabelY + summaryLabelHeight;

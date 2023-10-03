@@ -12,7 +12,10 @@ class QComboBox;
 class QStackedWidget;
 QT_END_NAMESPACE
 
-namespace Utils { class PathChooser; }
+namespace Utils {
+class PathChooser;
+class QtcSettings;
+} // Utils
 
 namespace TextEditor {
 
@@ -27,8 +30,8 @@ public:
     QString id() const override;
     QString displayName() const override;
     QWidget *createConfigWidget() override;
-    void writeSettings(QSettings *settings) override;
-    void readSettings(QSettings *settings) override;
+    void writeSettings(Utils::QtcSettings *settings) override;
+    void readSettings(Utils::QtcSettings *settings) override;
     bool isValid() const override;
 
     void setDirectory(const Utils::FilePath &directory);
@@ -45,9 +48,11 @@ private:
     FileContainerProvider fileContainerProvider() const override;
     void setValid(bool valid);
     void searchEnginesSelectionChanged(int index);
+    void currentEditorChanged(Core::IEditor *editor);
 
     QPointer<QWidget> m_configWidget;
     QPointer<Utils::PathChooser> m_directory;
+    QAbstractButton *m_currentDirectory;
     QStackedWidget *m_searchEngineWidget = nullptr;
     QComboBox *m_searchEngineCombo = nullptr;
     bool m_isValid = false;

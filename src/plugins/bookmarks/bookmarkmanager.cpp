@@ -15,20 +15,19 @@
 #include <coreplugin/session.h>
 
 #include <texteditor/texteditor.h>
+
 #include <utils/algorithm.h>
 #include <utils/icon.h>
 #include <utils/qtcassert.h>
 #include <utils/checkablemessagebox.h>
 #include <utils/theme/theme.h>
 #include <utils/dropsupport.h>
-#include <utils/utilsicons.h>
 
 #include <QAction>
 #include <QContextMenuEvent>
 #include <QDebug>
 #include <QDialog>
 #include <QDialogButtonBox>
-#include <QDir>
 #include <QFormLayout>
 #include <QLineEdit>
 #include <QMenu>
@@ -43,10 +42,21 @@ using namespace Utils;
 
 namespace Bookmarks::Internal {
 
-BookmarkDelegate::BookmarkDelegate(QObject *parent)
-    : QStyledItemDelegate(parent)
+class BookmarkDelegate : public QStyledItemDelegate
 {
-}
+public:
+    BookmarkDelegate(QObject *parent)
+        : QStyledItemDelegate(parent)
+    {}
+
+private:
+    void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const final;
+    QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const final;
+    void generateGradientPixmap(int width, int height, const QColor &color, bool selected) const;
+
+    mutable QPixmap m_normalPixmap;
+    mutable QPixmap m_selectedPixmap;
+};
 
 QSize BookmarkDelegate::sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const
 {
@@ -159,6 +169,31 @@ void BookmarkDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
     painter->restore();
 }
 
+// BookmarkView
+
+class BookmarkView final : public Utils::ListView
+{
+public:
+    explicit BookmarkView(BookmarkManager *manager);
+
+    QList<QToolButton *> createToolBarWidgets();
+
+    void gotoBookmark(const QModelIndex &index);
+
+    void removeFromContextMenu();
+    void removeAll();
+
+protected:
+    void contextMenuEvent(QContextMenuEvent *event) final;
+    void removeBookmark(const QModelIndex &index);
+    void keyPressEvent(QKeyEvent *event) final;
+
+private:
+    Core::IContext *m_bookmarkContext;
+    QModelIndex m_contextMenuIndex;
+    BookmarkManager *m_manager;
+};
+
 BookmarkView::BookmarkView(BookmarkManager *manager)  :
     m_bookmarkContext(new IContext(this)),
     m_manager(manager)
@@ -258,7 +293,7 @@ void BookmarkView::removeAll()
                                       Tr::tr("Remove All Bookmarks"),
                                       Tr::tr("Are you sure you want to remove all bookmarks from "
                                              "all files in the current session?"),
-                                      QString("RemoveAllBookmarks"))
+                                      Key("RemoveAllBookmarks"))
         != QMessageBox::Yes)
         return;
 

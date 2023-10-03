@@ -10,7 +10,7 @@
 #include "ieditor.h"
 #include "ieditorfactory.h"
 
-#include <coreplugin/idocument.h>
+#include "../idocument.h"
 
 #include <QList>
 #include <QObject>
@@ -96,7 +96,7 @@ public:
 
     static void saveSettings();
     static void readSettings();
-    static Qt::CaseSensitivity readFileSystemSensitivity(QSettings *settings);
+    static Qt::CaseSensitivity readFileSystemSensitivity(Utils::QtcSettings *settings);
     static void writeFileSystemSensitivity(Utils::QtcSettings *settings,
                                            Qt::CaseSensitivity sensitivity);
 

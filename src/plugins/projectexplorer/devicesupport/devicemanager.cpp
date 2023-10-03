@@ -115,6 +115,11 @@ DeviceManager *DeviceManager::cloneInstance()
     return DeviceManagerPrivate::clonedInstance;
 }
 
+DeviceManager *DeviceManager::clonedInstance()
+{
+    return DeviceManagerPrivate::clonedInstance;
+}
+
 void DeviceManager::copy(const DeviceManager *source, DeviceManager *target, bool deep)
 {
     if (deep) {
@@ -253,7 +258,8 @@ void DeviceManager::addDevice(const IDevice::ConstPtr &_device)
     }
 
     // TODO: make it thread safe?
-    device->setDisplayName(Utils::makeUniquelyNumbered(device->displayName(), names));
+    device->settings()->displayName.setValue(
+        Utils::makeUniquelyNumbered(device->displayName(), names));
 
     const int pos = d->indexForId(device->id());
 
@@ -427,8 +433,9 @@ DeviceManager::DeviceManager(bool isInstance) : d(std::make_unique<DeviceManager
 
     deviceHooks.deviceDisplayName = [](const FilePath &filePath) {
         auto device = DeviceManager::deviceForPath(filePath);
-        QTC_ASSERT(device, return filePath.toUserOutput());
-        return device->displayName();
+        if (device)
+            return device->displayName();
+        return filePath.host().toString();
     };
 
     deviceHooks.ensureReachable = [](const FilePath &filePath, const FilePath &other) {
@@ -557,7 +564,7 @@ void ProjectExplorerPlugin::testDeviceManager()
     TestDeviceFactory factory;
 
     TestDevice::Ptr dev = IDevice::Ptr(new TestDevice);
-    dev->setDisplayName(QLatin1String("blubbdiblubbfurz!"));
+    dev->settings()->displayName.setValue(QLatin1String("blubbdiblubbfurz!"));
     QVERIFY(dev->isAutoDetected());
     QCOMPARE(dev->deviceState(), IDevice::DeviceStateUnknown);
     QCOMPARE(dev->type(), TestDevice::testTypeId());
@@ -618,7 +625,7 @@ void ProjectExplorerPlugin::testDeviceManager()
     TestDevice::Ptr dev3 = IDevice::Ptr(new TestDevice);
     QVERIFY(dev->id() != dev3->id());
 
-    dev3->setDisplayName(dev->displayName());
+    dev3->settings()->displayName.setValue(dev->displayName());
     mgr->addDevice(dev3);
     QCOMPARE(mgr->deviceAt(mgr->deviceCount() - 1)->displayName(),
              QString(dev3->displayName() + QLatin1Char('2')));

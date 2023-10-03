@@ -428,8 +428,8 @@ void PerfSettings::readGlobalSettings()
     Store defaults;
 
     // Read stored values
-    QSettings *settings = Core::ICore::settings();
-    settings->beginGroup(QLatin1String(Constants::AnalyzerSettingsGroupId));
+    QtcSettings *settings = Core::ICore::settings();
+    settings->beginGroup(Constants::AnalyzerSettingsGroupId);
     Store map = defaults;
     for (Store::ConstIterator it = defaults.constBegin(); it != defaults.constEnd(); ++it)
         map.insert(it.key(), settings->value(it.key(), it.value()));
@@ -440,8 +440,8 @@ void PerfSettings::readGlobalSettings()
 
 void PerfSettings::writeGlobalSettings() const
 {
-    QSettings *settings = Core::ICore::settings();
-    settings->beginGroup(QLatin1String(Constants::AnalyzerSettingsGroupId));
+    QtcSettings *settings = Core::ICore::settings();
+    settings->beginGroup(Constants::AnalyzerSettingsGroupId);
     Store map;
     toMap(map);
     for (Store::ConstIterator it = map.constBegin(); it != map.constEnd(); ++it)

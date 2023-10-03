@@ -18,7 +18,10 @@ namespace ProjectExplorer {
     class ExtraCompiler;
     class FolderNode;
 }
-namespace Utils { class Process; }
+namespace Utils {
+    class Process;
+    class Link;
+}
 
 namespace CMakeProjectManager {
 
@@ -68,6 +71,7 @@ public:
     void runCMake();
     void runCMakeAndScanProjectTree();
     void runCMakeWithExtraArguments();
+    void runCMakeWithProfiling();
     void stopCMakeRun();
 
     bool persistCMakeState();
@@ -115,6 +119,9 @@ public:
     QString error() const;
     QString warning() const;
 
+    const QHash<QString, Utils::Link> &cmakeSymbolsHash() const { return m_cmakeSymbolsHash; }
+    CMakeKeywords projectKeywords() const { return m_projectKeywords; }
+
 signals:
     void configurationCleared();
     void configurationChanged(const CMakeConfig &config);
@@ -144,7 +151,8 @@ private:
         = (1 << 1), // Force initial configuration arguments to cmake
         REPARSE_FORCE_EXTRA_CONFIGURATION = (1 << 2), // Force extra configuration arguments to cmake
         REPARSE_URGENT = (1 << 3),                    // Do not delay the parser run by 1s
-        REPARSE_DEBUG = (1 << 4),                    // Start with debugging
+        REPARSE_DEBUG = (1 << 4),                     // Start with debugging
+        REPARSE_PROFILING = (1 << 5),                 // Start profiling
     };
     void reparse(int reparseParameters);
     QString reparseParametersString(int reparseFlags);
@@ -190,6 +198,8 @@ private:
 
     void runCTest();
 
+    void setupCMakeSymbolsHash();
+
     struct ProjectFileArgumentPosition
     {
         cmListFileArgument argumentPosition;
@@ -215,6 +225,8 @@ private:
     QList<ProjectExplorer::ExtraCompiler *> m_extraCompilers;
     QList<CMakeBuildTarget> m_buildTargets;
     QSet<CMakeFileInfo> m_cmakeFiles;
+    QHash<QString, Utils::Link> m_cmakeSymbolsHash;
+    CMakeKeywords m_projectKeywords;
 
     QHash<QString, ProjectFileArgumentPosition> m_filesToBeRenamed;
 

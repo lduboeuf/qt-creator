@@ -9,11 +9,13 @@
 #include <coreplugin/icore.h>
 #include <coreplugin/editormanager/editormanager.h>
 #include <projectexplorer/project.h>
+
 #include <utils/fileutils.h>
 #include <utils/hostosinfo.h>
 #include <utils/layoutbuilder.h>
 #include <utils/mimeutils.h>
 #include <utils/pathchooser.h>
+#include <utils/qtcsettings.h>
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -22,7 +24,6 @@
 #include <QGuiApplication>
 #include <QLineEdit>
 #include <QLocale>
-#include <QSettings>
 #include <QTextStream>
 #include <QVBoxLayout>
 
@@ -49,35 +50,23 @@ const char *licenseTemplateTemplate = QT_TRANSLATE_NOOP("QtC::CppEditor",
 "**   To protect a percent sign, use '%%'.\n"
 "**************************************************************************/\n");
 
-void CppFileSettings::toSettings(QSettings *s) const
+void CppFileSettings::toSettings(QtcSettings *s) const
 {
     const CppFileSettings def;
     s->beginGroup(Constants::CPPEDITOR_SETTINGSGROUP);
-    QtcSettings::setValueWithDefault(s, headerPrefixesKeyC, headerPrefixes, def.headerPrefixes);
-    QtcSettings::setValueWithDefault(s, sourcePrefixesKeyC, sourcePrefixes, def.sourcePrefixes);
-    QtcSettings::setValueWithDefault(s, headerSuffixKeyC, headerSuffix, def.headerSuffix);
-    QtcSettings::setValueWithDefault(s, sourceSuffixKeyC, sourceSuffix, def.sourceSuffix);
-    QtcSettings::setValueWithDefault(s,
-                                     headerSearchPathsKeyC,
-                                     headerSearchPaths,
-                                     def.headerSearchPaths);
-    QtcSettings::setValueWithDefault(s,
-                                     sourceSearchPathsKeyC,
-                                     sourceSearchPaths,
-                                     def.sourceSearchPaths);
-    QtcSettings::setValueWithDefault(s,
-                                     Constants::LOWERCASE_CPPFILES_KEY,
-                                     lowerCaseFiles,
-                                     def.lowerCaseFiles);
-    QtcSettings::setValueWithDefault(s, headerPragmaOnceC, headerPragmaOnce, def.headerPragmaOnce);
-    QtcSettings::setValueWithDefault(s,
-                                     licenseTemplatePathKeyC,
-                                     licenseTemplatePath,
-                                     def.licenseTemplatePath);
+    s->setValueWithDefault(headerPrefixesKeyC, headerPrefixes, def.headerPrefixes);
+    s->setValueWithDefault(sourcePrefixesKeyC, sourcePrefixes, def.sourcePrefixes);
+    s->setValueWithDefault(headerSuffixKeyC, headerSuffix, def.headerSuffix);
+    s->setValueWithDefault(sourceSuffixKeyC, sourceSuffix, def.sourceSuffix);
+    s->setValueWithDefault(headerSearchPathsKeyC, headerSearchPaths, def.headerSearchPaths);
+    s->setValueWithDefault(sourceSearchPathsKeyC, sourceSearchPaths, def.sourceSearchPaths);
+    s->setValueWithDefault(Constants::LOWERCASE_CPPFILES_KEY, lowerCaseFiles, def.lowerCaseFiles);
+    s->setValueWithDefault(headerPragmaOnceC, headerPragmaOnce, def.headerPragmaOnce);
+    s->setValueWithDefault(licenseTemplatePathKeyC, licenseTemplatePath, def.licenseTemplatePath);
     s->endGroup();
 }
 
-void CppFileSettings::fromSettings(QSettings *s)
+void CppFileSettings::fromSettings(QtcSettings *s)
 {
     const CppFileSettings def;
     s->beginGroup(Constants::CPPEDITOR_SETTINGSGROUP);
@@ -93,7 +82,7 @@ void CppFileSettings::fromSettings(QSettings *s)
     s->endGroup();
 }
 
-bool CppFileSettings::applySuffixesToMimeDB()
+static bool applySuffixes(const QString &sourceSuffix, const QString &headerSuffix)
 {
     Utils::MimeType mt;
     mt = Utils::mimeTypeForName(QLatin1String(Constants::CPP_SOURCE_MIMETYPE));
@@ -105,6 +94,19 @@ bool CppFileSettings::applySuffixesToMimeDB()
         return false;
     mt.setPreferredSuffix(headerSuffix);
     return true;
+}
+
+void CppFileSettings::addMimeInitializer() const
+{
+    Utils::addMimeInitializer([sourceSuffix = sourceSuffix, headerSuffix = headerSuffix] {
+        if (!applySuffixes(sourceSuffix, headerSuffix))
+            qWarning("Unable to apply cpp suffixes to mime database (cpp mime types not found).\n");
+    });
+}
+
+bool CppFileSettings::applySuffixesToMimeDB()
+{
+    return applySuffixes(sourceSuffix, headerSuffix);
 }
 
 bool CppFileSettings::equals(const CppFileSettings &rhs) const

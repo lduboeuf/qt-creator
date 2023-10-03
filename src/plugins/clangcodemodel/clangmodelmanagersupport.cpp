@@ -231,10 +231,10 @@ ClangModelManagerSupport::ClangModelManagerSupport()
     connect(modelManager, &CppModelManager::fallbackProjectPartUpdated, this, [this] {
         if (sessionModeEnabled())
             return;
-        if (ClangdClient * const fallbackClient = clientForProject(nullptr)) {
+        if (ClangdClient * const fallbackClient = clientForProject(nullptr))
             LanguageClientManager::shutdownClient(fallbackClient);
+        if (ClangdSettings::instance().useClangd())
             claimNonProjectSources(new ClangdClient(nullptr, {}));
-        }
     });
 
     auto projectManager = ProjectManager::instance();
@@ -250,9 +250,6 @@ ClangModelManagerSupport::ClangModelManagerSupport()
     ClangdSettings::setDefaultClangdPath(ICore::clangdExecutable(CLANG_BINDIR));
     connect(&ClangdSettings::instance(), &ClangdSettings::changed,
             this, &ClangModelManagerSupport::onClangdSettingsChanged);
-
-    if (ClangdSettings::instance().useClangd())
-        new ClangdClient(nullptr, {});
 
     new ClangdQuickFixFactory(); // memory managed by CppEditor::g_cppQuickFixFactories
 }
@@ -309,7 +306,7 @@ void ClangModelManagerSupport::startLocalRenaming(const CursorInEditor &data,
 {
     if (ClangdClient * const client = clientForFile(data.filePath());
             client && client->reachable()) {
-        client->findLocalUsages(data.textDocument(), data.cursor(),
+        client->findLocalUsages(data.editorWidget(), data.cursor(),
                                 std::move(renameSymbolsCallback));
         return;
     }
@@ -777,8 +774,13 @@ void ClangModelManagerSupport::onEditorOpened(IEditor *editor)
             project = nullptr;
         else if (!project && ProjectFile::isHeader(document->filePath()))
             project = fallbackProject();
-        if (ClangdClient * const client = clientForProject(project))
-            LanguageClientManager::openDocumentWithClient(textDocument, client);
+        ClangdClient *client = clientForProject(project);
+        if (!client) {
+            if (project)
+                return;
+            client = new ClangdClient(nullptr, {});
+        }
+        LanguageClientManager::openDocumentWithClient(textDocument, client);
     }
 }
 

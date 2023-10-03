@@ -431,7 +431,7 @@ void EditorManagerPrivate::init()
     ActionContainer *mfile = ActionManager::actionContainer(Constants::M_FILE);
 
     // Revert to saved
-    m_revertToSavedAction->setIcon(QIcon::fromTheme("document-revert"));
+    m_revertToSavedAction->setIcon(Icon::fromTheme("document-revert"));
     Command *cmd = ActionManager::registerAction(m_revertToSavedAction,
                                        Constants::REVERTTOSAVED, editManagerContext);
     cmd->setAttribute(Command::CA_UpdateText);
@@ -1170,33 +1170,30 @@ Id EditorManagerPrivate::getOpenWithEditorId(const Utils::FilePath &fileName, bo
     return selectedId;
 }
 
-static QMap<QString, QVariant> toMap(const QHash<Utils::MimeType, IEditorFactory *> &hash)
+static QMap<QString, QVariant> toMap(const QHash<QString, IEditorFactory *> &hash)
 {
     QMap<QString, QVariant> map;
     auto it = hash.begin();
     const auto end = hash.end();
     while (it != end) {
-        map.insert(it.key().name(), it.value()->id().toSetting());
+        map.insert(it.key(), it.value()->id().toSetting());
         ++it;
     }
     return map;
 }
 
-static QHash<Utils::MimeType, IEditorFactory *> fromMap(const QMap<QString, QVariant> &map)
+static QHash<QString, IEditorFactory *> fromMap(const QMap<QString, QVariant> &map)
 {
     const EditorFactories factories = IEditorFactory::allEditorFactories();
-    QHash<Utils::MimeType, IEditorFactory *> hash;
+    QHash<QString, IEditorFactory *> hash;
     auto it = map.begin();
     const auto end = map.end();
     while (it != end) {
-        const Utils::MimeType mimeType = Utils::mimeTypeForName(it.key());
-        if (mimeType.isValid()) {
-            const Id factoryId = Id::fromSetting(it.value());
-            IEditorFactory *factory = Utils::findOrDefault(factories,
+        const Id factoryId = Id::fromSetting(it.value());
+        IEditorFactory *factory = Utils::findOrDefault(factories,
                                                        Utils::equal(&IEditorFactory::id, factoryId));
-            if (factory)
-                hash.insert(mimeType, factory);
-        }
+        if (factory)
+            hash.insert(it.key(), factory);
         ++it;
     }
     return hash;
@@ -1204,7 +1201,7 @@ static QHash<Utils::MimeType, IEditorFactory *> fromMap(const QMap<QString, QVar
 
 void EditorManagerPrivate::saveSettings()
 {
-    ICore::settingsDatabase()->setValue(documentStatesKey, d->m_editorStates);
+    SettingsDatabase::setValue(documentStatesKey, d->m_editorStates);
 
     QtcSettings *qsettings = ICore::settings();
     qsettings->setValueWithDefault(preferredEditorFactoriesKey,
@@ -1213,7 +1210,7 @@ void EditorManagerPrivate::saveSettings()
 
 void EditorManagerPrivate::readSettings()
 {
-    QSettings *qs = ICore::settings();
+    QtcSettings *qs = ICore::settings();
 
     const Qt::CaseSensitivity defaultSensitivity = OsSpecificAspects::fileNameCaseSensitivity(
         HostOsInfo::hostOs());
@@ -1223,20 +1220,19 @@ void EditorManagerPrivate::readSettings()
     else
         HostOsInfo::setOverrideFileNameCaseSensitivity(sensitivity);
 
-    const QHash<Utils::MimeType, IEditorFactory *> preferredEditorFactories = fromMap(
+    const QHash<QString, IEditorFactory *> preferredEditorFactories = fromMap(
         qs->value(preferredEditorFactoriesKey).toMap());
     setUserPreferredEditorTypes(preferredEditorFactories);
 
-    SettingsDatabase *settings = ICore::settingsDatabase();
-    if (settings->contains(documentStatesKey)) {
-        d->m_editorStates = settings->value(documentStatesKey)
-            .value<QMap<QString, QVariant> >();
+    if (SettingsDatabase::contains(documentStatesKey)) {
+        d->m_editorStates = SettingsDatabase::value(documentStatesKey)
+            .value<QMap<QString, QVariant>>();
     }
 
     updateAutoSave();
 }
 
-Qt::CaseSensitivity EditorManagerPrivate::readFileSystemSensitivity(QSettings *settings)
+Qt::CaseSensitivity EditorManagerPrivate::readFileSystemSensitivity(QtcSettings *settings)
 {
     const Qt::CaseSensitivity defaultSensitivity = OsSpecificAspects::fileNameCaseSensitivity(
         HostOsInfo::hostOs());
@@ -3574,7 +3570,7 @@ void EditorManager::hideEditorStatusBar(const QString &id)
 */
 QTextCodec *EditorManager::defaultTextCodec()
 {
-    QSettings *settings = ICore::settings();
+    QtcSettings *settings = ICore::settings();
     const QByteArray codecName =
             settings->value(Constants::SETTINGS_DEFAULTTEXTENCODING).toByteArray();
     if (QTextCodec *candidate = QTextCodec::codecForName(codecName))
@@ -3595,7 +3591,7 @@ QTextCodec *EditorManager::defaultTextCodec()
 */
 TextFileFormat::LineTerminationMode EditorManager::defaultLineEnding()
 {
-    QSettings *settings = ICore::settings();
+    QtcSettings *settings = ICore::settings();
     const int defaultLineTerminator = settings->value(Constants::SETTINGS_DEFAULT_LINE_TERMINATOR,
             TextFileFormat::LineTerminationMode::NativeLineTerminator).toInt();
 

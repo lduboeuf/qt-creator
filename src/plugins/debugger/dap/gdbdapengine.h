@@ -14,6 +14,13 @@ public:
 
 private:
     void setupEngine() override;
+
+    void handleDapInitialize() override;
+    void handleDapConfigurationDone() override;
+
+    bool isLocalAttachEngine() const;
+
+    const QLoggingCategory &logCategory() override;
 };
 
 } // Debugger::Internal

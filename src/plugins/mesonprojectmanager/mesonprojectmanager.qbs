@@ -49,8 +49,6 @@ Project {
             "mesonbuildconfiguration.h",
             "mesonbuildsystem.cpp",
             "mesonbuildsystem.h",
-            "mesonprocess.cpp",
-            "mesonprocess.h",
             "mesonproject.cpp",
             "mesonproject.h",
             "mesonprojectimporter.cpp",
@@ -95,7 +93,6 @@ Project {
 
     QtcAutotest {
         name: "mesonwrapper"
-        condition: project.withAutotests
 
         Depends { name: "Core" }
         Depends { name: "Utils" }
@@ -116,7 +113,6 @@ Project {
 
     QtcAutotest {
         name: "mesoninfoparser"
-        condition: project.withAutotests
 
         Depends { name: "Core" }
         Depends { name: "Utils" }
@@ -138,7 +134,6 @@ Project {
 
     QtcAutotest {
         name: "ninjaparser"
-        condition: project.withAutotests
 
         Depends { name: "Core" }
         Depends { name: "ProjectExplorer" }
@@ -156,7 +151,6 @@ Project {
 
     QtcAutotest {
         name: "mesonparser"
-        condition: project.withAutotests
 
         Depends { name: "Core" }
         Depends { name: "ProjectExplorer" }

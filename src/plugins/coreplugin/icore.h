@@ -6,6 +6,7 @@
 #include "core_global.h"
 #include "icontext.h"
 
+#include <utils/appmainwindow.h>
 #include <utils/filepath.h>
 #include <utils/qtcsettings.h>
 
@@ -17,6 +18,7 @@
 #include <functional>
 
 QT_BEGIN_NAMESPACE
+class QColor;
 class QMainWindow;
 class QPrinter;
 class QStatusBar;
@@ -26,22 +28,25 @@ QT_END_NAMESPACE
 namespace Utils { class InfoBar; }
 
 namespace Core {
+
 class Context;
+class IDocument;
 class IWizardFactory;
-class SettingsDatabase;
-
-namespace Internal { class MainWindow; }
-
 class NewDialog;
+
+namespace Internal {
+class MainWindow;
+class MainWindowPrivate;
+} // Internal
 
 class CORE_EXPORT ICore : public QObject
 {
     Q_OBJECT
 
     friend class Internal::MainWindow;
-    friend class IWizardFactory;
+    friend class Internal::MainWindowPrivate;
 
-    explicit ICore(Internal::MainWindow *mw);
+    ICore();
     ~ICore() override;
 
 public:
@@ -69,7 +74,6 @@ public:
                                        QWidget *parent = nullptr);
 
     static Utils::QtcSettings *settings(QSettings::Scope scope = QSettings::UserScope);
-    static SettingsDatabase *settingsDatabase();
     static QPrinter *printer();
     static QString userInterfaceLanguage();
 
@@ -135,6 +139,7 @@ signals:
 public:
     /* internal use */
     static QStringList additionalAboutInformation();
+    static void clearAboutInformation();
     static void appendAboutInformation(const QString &line);
     static QString systemInformation();
     static void setupScreenShooter(const QString &name, QWidget *w, const QRect &rc = QRect());
@@ -151,9 +156,63 @@ public:
 
     static void saveSettings(SaveSettingsReason reason);
     static void setNewDialogFactory(const std::function<NewDialog *(QWidget *)> &newFactory);
-
-private:
     static void updateNewItemDialogState();
 };
+
+namespace Internal {
+
+class MainWindow : public Utils::AppMainWindow
+{
+    Q_OBJECT
+
+public:
+    MainWindow();
+    ~MainWindow() override;
+
+    void init();
+    void extensionsInitialized();
+    void aboutToShutdown();
+
+    IContext *contextObject(QWidget *widget) const;
+    void addContextObject(IContext *context);
+    void removeContextObject(IContext *context);
+
+    static IDocument *openFiles(const Utils::FilePaths &filePaths,
+                                ICore::OpenFilesFlags flags,
+                                const Utils::FilePath &workingDirectory = {});
+
+    QPrinter *printer() const;
+    IContext *currentContextObject() const;
+    QStatusBar *statusBar() const;
+    Utils::InfoBar *infoBar() const;
+
+    void updateAdditionalContexts(const Context &remove, const Context &add,
+                                  ICore::ContextPriority priority);
+
+    void setOverrideColor(const QColor &color);
+
+    QStringList additionalAboutInformation() const;
+    void clearAboutInformation();
+    void appendAboutInformation(const QString &line);
+
+    void addPreCloseListener(const std::function<bool()> &listener);
+
+    void saveSettings();
+
+    void restart();
+
+    void restartTrimmer();
+
+public slots:
+    static void openFileWith();
+    void exit();
+
+private:
+    void closeEvent(QCloseEvent *event) override;
+    void keyPressEvent(QKeyEvent *event) override;
+    void mousePressEvent(QMouseEvent *event) override;
+};
+
+} // namespace Internal
 
 } // namespace Core

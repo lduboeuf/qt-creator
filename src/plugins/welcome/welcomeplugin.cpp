@@ -80,7 +80,8 @@ signals:
 
 void ResizeSignallingWidget::resizeEvent(QResizeEvent *event)
 {
-    emit resized(event->size(), event->oldSize());
+    if (isVisible())
+        emit resized(event->size(), event->oldSize());
 }
 
 class WelcomeMode : public IMode
@@ -398,7 +399,7 @@ WelcomeMode::~WelcomeMode()
 
 void WelcomeMode::initPlugins()
 {
-    QSettings *settings = ICore::settings();
+    QtcSettings *settings = ICore::settings();
     m_activePage = Id::fromSetting(settings->value(currentPageSettingsKeyC));
 
     for (IWelcomePage *page : IWelcomePage::allWelcomePages())

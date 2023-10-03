@@ -1,9 +1,7 @@
-import qbs
-
 Project {
-    name: "QtcManualtests"
+    name: "QtcManualTests"
 
-    condition: project.withAutotests
+    qbsSearchPaths: "qbs"
 
     references: [
         "debugger/gui/gui.qbs",

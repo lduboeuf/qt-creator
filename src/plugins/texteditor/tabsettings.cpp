@@ -3,10 +3,7 @@
 
 #include "tabsettings.h"
 
-#include <utils/settingsutils.h>
-
 #include <QDebug>
-#include <QSettings>
 #include <QTextCursor>
 #include <QTextDocument>
 
@@ -14,7 +11,6 @@ static const char spacesForTabsKey[] = "SpacesForTabs";
 static const char autoSpacesForTabsKey[] = "AutoSpacesForTabs";
 static const char tabSizeKey[] = "TabSize";
 static const char indentSizeKey[] = "IndentSize";
-static const char groupPostfix[] = "TabSettings";
 static const char paddingModeKey[] = "PaddingMode";
 
 using namespace Utils;
@@ -30,18 +26,6 @@ TabSettings::TabSettings(TabSettings::TabPolicy tabPolicy,
     , m_indentSize(indentSize)
     , m_continuationAlignBehavior(continuationAlignBehavior)
 {
-
-}
-
-void TabSettings::toSettings(const Key &category, QSettings *s) const
-{
-    Utils::toSettings(groupPostfix, category, s, this);
-}
-
-void TabSettings::fromSettings(const Key &category, QSettings *s)
-{
-    *this = TabSettings(); // Assign defaults
-    Utils::fromSettings(groupPostfix, category, s, this);
 }
 
 Store TabSettings::toMap() const

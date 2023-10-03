@@ -123,9 +123,13 @@ namespace Internal {
 class IDevicePrivate
 {
 public:
-    IDevicePrivate() = default;
+    IDevicePrivate(std::unique_ptr<DeviceSettings> s)
+        : settings(std::move(s))
+    {
+        if (!settings)
+            settings = std::make_unique<DeviceSettings>();
+    }
 
-    DisplayName displayName;
     QString displayType;
     Id type;
     IDevice::Origin origin = IDevice::AutoDetected;
@@ -148,12 +152,58 @@ public:
     QList<IDevice::DeviceAction> deviceActions;
     Store extraData;
     IDevice::OpenTerminal openTerminal;
+
+    std::unique_ptr<DeviceSettings> settings;
 };
 } // namespace Internal
 
+DeviceSettings::DeviceSettings()
+{
+    setAutoApply(false);
+
+    displayName.setSettingsKey(DisplayNameKey);
+    displayName.setDisplayStyle(StringAspect::DisplayStyle::LineEditDisplay);
+
+    auto validateDisplayName = [](const QString &old,
+                                  const QString &newValue) -> expected_str<void> {
+        if (old == newValue)
+            return {};
+
+        if (newValue.trimmed().isEmpty())
+            return make_unexpected(Tr::tr("The device name cannot be empty."));
+
+        if (DeviceManager::clonedInstance()->hasDevice(newValue))
+            return make_unexpected(Tr::tr("A device with this name already exists."));
+
+        return {};
+    };
+
+    displayName.setValidationFunction(
+        [this, validateDisplayName](FancyLineEdit *edit, QString *errorMsg) -> bool {
+            auto result = validateDisplayName(displayName.value(), edit->text());
+            if (result)
+                return true;
+
+            if (errorMsg)
+                *errorMsg = result.error();
+
+            return false;
+        });
+
+    displayName.setValueAcceptor(
+        [validateDisplayName](const QString &old,
+                              const QString &newValue) -> std::optional<QString> {
+            if (validateDisplayName(old, newValue))
+                return std::nullopt;
+
+            return old;
+        });
+}
+
 DeviceTester::DeviceTester(QObject *parent) : QObject(parent) { }
 
-IDevice::IDevice() : d(new Internal::IDevicePrivate)
+IDevice::IDevice(std::unique_ptr<DeviceSettings> settings)
+    : d(new Internal::IDevicePrivate(std::move(settings)))
 {
 }
 
@@ -258,23 +308,9 @@ Environment IDevice::systemEnvironment() const
     return access->deviceEnvironment();
 }
 
-/*!
-    Specifies a free-text name for the device to be displayed in GUI elements.
-*/
-
 QString IDevice::displayName() const
 {
-    return d->displayName.value();
-}
-
-void IDevice::setDisplayName(const QString &name)
-{
-    d->displayName.setValue(name);
-}
-
-void IDevice::setDefaultDisplayName(const QString &name)
-{
-    d->displayName.setDefaultValue(name);
+    return d->settings->displayName();
 }
 
 QString IDevice::displayType() const
@@ -439,7 +475,8 @@ Id IDevice::idFromMap(const Store &map)
 void IDevice::fromMap(const Store &map)
 {
     d->type = typeFromMap(map);
-    d->displayName.fromMap(map, DisplayNameKey);
+    settings()->fromMap(map);
+
     d->id = Id::fromSetting(map.value(IdKey));
     d->osType = osTypeFromString(map.value(ClientOsTypeKey, osTypeToString(OsTypeLinux)).toString());
     if (!d->id.isValid())
@@ -487,7 +524,8 @@ void IDevice::fromMap(const Store &map)
 Store IDevice::toMap() const
 {
     Store map;
-    d->displayName.toMap(map, DisplayNameKey);
+    d->settings->toMap(map);
+
     map.insert(TypeKey, d->type.toString());
     map.insert(ClientOsTypeKey, osTypeToString(d->osType));
     map.insert(IdKey, d->id.toSetting());
@@ -526,6 +564,11 @@ IDevice::Ptr IDevice::clone() const
     device->d->osType = d->osType;
     device->fromMap(toMap());
     return device;
+}
+
+DeviceSettings *IDevice::settings() const
+{
+    return d->settings.get();
 }
 
 QString IDevice::deviceStateToString() const

@@ -2,6 +2,7 @@ add_qtc_plugin(CMakeProjectManager
   PLUGIN_CLASS CMakeProjectPlugin
   DEPENDS QmlJS
   PLUGIN_DEPENDS Core CppEditor ProjectExplorer TextEditor QtSupport
+  SYSTEM_INCLUDES 3dparty/cmake
   SOURCES
     builddirparameters.cpp builddirparameters.h
     cmake_global.h
@@ -45,4 +46,5 @@ add_qtc_plugin(CMakeProjectManager
     3rdparty/cmake/cmListFileCache.cxx
     3rdparty/cmake/cmListFileLexer.cxx
     3rdparty/cmake/cmListFileCache.h
+    3rdparty/rstparser/rstparser.cc 3rdparty/rstparser/rstparser.h
 )

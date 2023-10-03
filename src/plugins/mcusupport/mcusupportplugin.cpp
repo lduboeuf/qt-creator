@@ -8,6 +8,7 @@
 #include "mcuqmlprojectnode.h"
 #include "mcusupportconstants.h"
 #include "mcusupportdevice.h"
+#include "mcusupportimportprovider.h"
 #include "mcusupportoptions.h"
 #include "mcusupportoptionspage.h"
 #include "mcusupportrunconfiguration.h"
@@ -39,6 +40,7 @@
 
 #include <utils/filepath.h>
 #include <utils/infobar.h>
+#include <utils/qtcsettings.h>
 
 #include <QAction>
 #include <QDateTime>
@@ -102,6 +104,7 @@ public:
     McuSupportOptions m_options{m_settingsHandler};
     McuSupportOptionsPage optionsPage{m_options, m_settingsHandler};
     MCUBuildStepFactory mcuBuildStepFactory;
+    McuSupportImportProvider mcuImportProvider;
 }; // class McuSupportPluginPrivate
 
 static McuSupportPluginPrivate *dd{nullptr};
@@ -110,6 +113,12 @@ McuSupportPlugin::~McuSupportPlugin()
 {
     delete dd;
     dd = nullptr;
+}
+
+static bool isQtDesignStudio()
+{
+    QtcSettings *settings = Core::ICore::settings();
+    return settings->value("QML/Designer/StandAloneMode", false).toBool();
 }
 
 void McuSupportPlugin::initialize()

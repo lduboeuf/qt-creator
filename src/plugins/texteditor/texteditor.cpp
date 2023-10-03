@@ -54,7 +54,6 @@
 #include <utils/fadingindicator.h>
 #include <utils/filesearch.h>
 #include <utils/fileutils.h>
-#include <utils/fixedsizeclicklabel.h>
 #include <utils/hostosinfo.h>
 #include <utils/infobar.h>
 #include <utils/mimeutils.h>
@@ -107,6 +106,7 @@
 #include <QTimeLine>
 #include <QTimer>
 #include <QToolBar>
+#include <QToolButton>
 
 /*!
     \namespace TextEditor
@@ -149,16 +149,16 @@ using ListTransformationMethod = void(QStringList &);
 
 static constexpr char dropProperty[] = "dropProp";
 
-class LineColumnLabel : public FixedSizeClickLabel
+class LineColumnButton : public QToolButton
 {
     Q_OBJECT
 public:
-    LineColumnLabel(TextEditorWidget *parent)
-        : FixedSizeClickLabel(parent)
+    LineColumnButton(TextEditorWidget *parent)
+        : QToolButton(parent)
         , m_editor(parent)
     {
-        connect(m_editor, &QPlainTextEdit::cursorPositionChanged, this, &LineColumnLabel::update);
-        connect(this, &FixedSizeClickLabel::clicked, ActionManager::instance(), [this] {
+        connect(m_editor, &QPlainTextEdit::cursorPositionChanged, this, &LineColumnButton::update);
+        connect(this, &QToolButton::pressed, ActionManager::instance(), [this] {
             emit m_editor->activateEditor(EditorManager::IgnoreNavigationHistory);
             QMetaObject::invokeMethod(ActionManager::instance(), [] {
                 if (Command *cmd = ActionManager::command(Core::Constants::GOTO)) {
@@ -197,7 +197,7 @@ private:
     bool event(QEvent *event) override
     {
         if (event->type() != QEvent::ToolTip)
-            return FixedSizeClickLabel::event(event);
+            return QToolButton::event(event);
 
         QString tooltipText = "<table cellpadding='2'>\n";
 
@@ -242,6 +242,19 @@ private:
         return true;
     }
 
+    QSize sizeHint() const override
+    {
+        const QSize size = QToolButton::sizeHint();
+        auto wider = [](const QSize &left, const QSize &right) {
+            return left.width() < right.width();
+        };
+        if (m_editor->multiTextCursor().hasSelection())
+            return std::max(m_maxSize, size, wider); // do not save the size if we have a selection
+        m_maxSize = std::max(m_maxSize, size, wider);
+        return m_maxSize;
+    }
+
+    mutable QSize m_maxSize;
     TextEditorWidget *m_editor;
 };
 
@@ -713,12 +726,12 @@ public:
     QWidget *m_stretchWidget = nullptr;
     QAction *m_stretchAction = nullptr;
     QAction *m_toolbarOutlineAction = nullptr;
-    LineColumnLabel *m_cursorPositionLabel = nullptr;
-    FixedSizeClickLabel *m_fileEncodingLabel = nullptr;
+    LineColumnButton *m_cursorPositionButton = nullptr;
+    QToolButton *m_fileEncodingButton = nullptr;
     QAction *m_fileEncodingLabelAction = nullptr;
     BaseTextFind *m_find = nullptr;
 
-    QComboBox *m_fileLineEnding = nullptr;
+    QToolButton *m_fileLineEnding = nullptr;
     QAction *m_fileLineEndingAction = nullptr;
 
     uint m_optionalActionMask = TextEditorActionHandler::None;
@@ -1022,22 +1035,21 @@ TextEditorWidgetPrivate::TextEditorWidgetPrivate(TextEditorWidget *parent)
     m_stretchAction = m_toolBar->addWidget(m_stretchWidget);
     m_toolBarWidget->layout()->addWidget(m_toolBar);
 
-    m_cursorPositionLabel = new LineColumnLabel(q);
     const int spacing = q->style()->pixelMetric(QStyle::PM_LayoutHorizontalSpacing) / 2;
-    m_cursorPositionLabel->setContentsMargins(spacing, 0, spacing, 0);
-    m_toolBarWidget->layout()->addWidget(m_cursorPositionLabel);
+    m_cursorPositionButton = new LineColumnButton(q);
+    m_cursorPositionButton->setContentsMargins(spacing, 0, spacing, 0);
+    m_toolBarWidget->layout()->addWidget(m_cursorPositionButton);
 
-    m_fileLineEnding = new QComboBox();
-    m_fileLineEnding->addItems(ExtraEncodingSettings::lineTerminationModeNames());
+    m_fileLineEnding = new QToolButton(q);
     m_fileLineEnding->setContentsMargins(spacing, 0, spacing, 0);
     m_fileLineEndingAction = m_toolBar->addWidget(m_fileLineEnding);
     updateFileLineEndingVisible();
     connect(q, &TextEditorWidget::readOnlyChanged,
             this, &TextEditorWidgetPrivate::updateFileLineEndingVisible);
 
-    m_fileEncodingLabel = new FixedSizeClickLabel;
-    m_fileEncodingLabel->setContentsMargins(spacing, 0, spacing, 0);
-    m_fileEncodingLabelAction = m_toolBar->addWidget(m_fileEncodingLabel);
+    m_fileEncodingButton = new QToolButton;
+    m_fileEncodingButton->setContentsMargins(spacing, 0, spacing, 0);
+    m_fileEncodingLabelAction = m_toolBar->addWidget(m_fileEncodingButton);
 
     m_extraSelections.reserve(NExtraSelectionKinds);
 
@@ -1078,11 +1090,19 @@ TextEditorWidgetPrivate::TextEditorWidgetPrivate(TextEditorWidget *parent)
     connect(&m_delayedUpdateTimer, &QTimer::timeout,
             q->viewport(), QOverload<>::of(&QWidget::update));
 
-    connect(m_fileEncodingLabel, &FixedSizeClickLabel::clicked,
+    connect(m_fileEncodingButton, &QToolButton::clicked,
             q, &TextEditorWidget::selectEncoding);
 
-    connect(m_fileLineEnding, &QComboBox::currentIndexChanged,
-            q, &TextEditorWidget::selectLineEnding);
+    connect(m_fileLineEnding, &QToolButton::clicked, ActionManager::instance(), [this] {
+        QMenu *menu = new QMenu;
+        menu->addAction(tr("Unix Line Endings (LF)"), [this] {
+            q->selectLineEnding(TextFileFormat::LFLineTerminator);
+        });
+        menu->addAction(tr("Windows Line Endings (CRLF)"), [this] {
+            q->selectLineEnding(TextFileFormat::CRLFLineTerminator);
+        });
+        menu->popup(QCursor::pos());
+    });
 
     TextEditorSettings *settings = TextEditorSettings::instance();
 
@@ -1790,25 +1810,30 @@ void TextEditorWidget::selectEncoding()
     }
 }
 
-void TextEditorWidget::selectLineEnding(int index)
+void TextEditorWidget::selectLineEnding(TextFileFormat::LineTerminationMode lineEnding)
 {
-    QTC_CHECK(index >= 0);
-    const auto newMode = Utils::TextFileFormat::LineTerminationMode(index);
-    if (d->m_document->lineTerminationMode() != newMode) {
-        d->m_document->setLineTerminationMode(newMode);
+    if (d->m_document->lineTerminationMode() != lineEnding) {
+        d->m_document->setLineTerminationMode(lineEnding);
         d->q->document()->setModified(true);
+        updateTextLineEndingLabel();
     }
 }
 
 void TextEditorWidget::updateTextLineEndingLabel()
 {
-    d->m_fileLineEnding->setCurrentIndex(d->m_document->lineTerminationMode());
+    const TextFileFormat::LineTerminationMode lineEnding = d->m_document->lineTerminationMode();
+    if (lineEnding == TextFileFormat::LFLineTerminator)
+        d->m_fileLineEnding->setText(Tr::tr("LF"));
+    else if (lineEnding == TextFileFormat::CRLFLineTerminator)
+        d->m_fileLineEnding->setText(Tr::tr("CRLF"));
+    else
+        QTC_ASSERT_STRING("Unsupported line ending mode.");
 }
 
 void TextEditorWidget::updateTextCodecLabel()
 {
     QString text = QString::fromLatin1(d->m_document->codec()->name());
-    d->m_fileEncodingLabel->setText(text, text);
+    d->m_fileEncodingButton->setText(text);
 }
 
 QString TextEditorWidget::msgTextTooLarge(quint64 size)
@@ -3585,11 +3610,19 @@ void TextEditorWidgetPrivate::configureGenericHighlighter(
 
 void TextEditorWidgetPrivate::setupFromDefinition(const KSyntaxHighlighting::Definition &definition)
 {
+    const TypingSettings::CommentPosition commentPosition
+        = m_document->typingSettings().m_commentPosition;
+    m_commentDefinition.isAfterWhitespace = commentPosition != TypingSettings::StartOfLine;
     if (!definition.isValid())
         return;
     m_commentDefinition.singleLine = definition.singleLineCommentMarker();
     m_commentDefinition.multiLineStart = definition.multiLineCommentMarker().first;
     m_commentDefinition.multiLineEnd = definition.multiLineCommentMarker().second;
+    if (commentPosition == TypingSettings::Automatic) {
+        m_commentDefinition.isAfterWhitespace
+            = definition.singleLineCommentPosition()
+              == KSyntaxHighlighting::CommentPosition::AfterWhitespace;
+    }
     q->setCodeFoldingSupported(true);
 }
 
@@ -7630,7 +7663,7 @@ void TextEditorWidget::rewrapParagraph()
     }
 
     // Find end of paragraph.
-    const QRegularExpression immovableDoxygenCommand(doxygenPrefix + "[@\\\\].*");
+    const QRegularExpression immovableDoxygenCommand(doxygenPrefix + "[@\\\\][a-zA-Z]{2,}");
     QTC_CHECK(immovableDoxygenCommand.isValid());
     while (cursor.movePosition(QTextCursor::NextBlock, QTextCursor::KeepAnchor)) {
         QString text = cursor.block().text();
@@ -7860,6 +7893,7 @@ void TextEditorWidget::setBehaviorSettings(const BehaviorSettings &bs)
 void TextEditorWidget::setTypingSettings(const TypingSettings &typingSettings)
 {
     d->m_document->setTypingSettings(typingSettings);
+    d->setupFromDefinition(d->currentDefinition());
 }
 
 void TextEditorWidget::setStorageSettings(const StorageSettings &storageSettings)
@@ -9261,6 +9295,8 @@ BaseTextEditor *TextEditorFactoryPrivate::createEditorHelper(const TextDocumentP
     textEditorWidget->d->m_hoverHandlers = m_hoverHandlers;
 
     textEditorWidget->d->m_commentDefinition = m_commentDefinition;
+    textEditorWidget->d->m_commentDefinition.isAfterWhitespace
+        = document->typingSettings().m_commentPosition != TypingSettings::StartOfLine;
 
     QObject::connect(textEditorWidget,
                      &TextEditorWidget::activateEditor,

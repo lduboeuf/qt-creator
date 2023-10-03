@@ -34,13 +34,13 @@
     \section1 Checking Build and Run Settings
 
     \QC is an integrated development environment (IDE) that you can use to
-    develop Qt applications. While you can use the Qt Installer to install \QC,
+    develop Qt applications. While you can use \QOI to install \QC,
     the stand-alone \QC installer never installs Qt or any Qt tools, such as
     qmake. To use \QC for Qt development, you also need to install a Qt version
     and a compiler. If you update the compiler version later, you
     can register it into \QC.
 
-    The Qt Installer attempts to auto-detect compilers and Qt versions. If it
+    \QOI attempts to auto-detect compilers and Qt versions. If it
     succeeds, the relevant kits will automatically become
     available in \QC. If it does not, you must add the kits yourself to tell
     \QC where everything is.
@@ -48,7 +48,7 @@
     To add kits, select \uicontrol Edit > \uicontrol Preferences >
     \uicontrol Kits > \uicontrol Add.
 
-    For more information, see \l{Adding Kits}.
+    For more information, see \l{Add kits}.
 
     Each kit consists of a set of values that define one environment, such as a
     \l{glossary-device}{device}, compiler, and Qt version. If \uicontrol Edit >
@@ -58,12 +58,12 @@
     If \uicontrol Auto-detected still does not show the Qt version, select
     \uicontrol {Add} to add it manually.
 
-    For more information, see \l{Adding Qt Versions}.
+    For more information, see \l{Add Qt versions}.
 
     Also check that \uicontrol Edit > \uicontrol Preferences > \uicontrol Kits >
     \uicontrol {Compilers} shows your compiler.
 
-    For more information, see \l{Adding Compilers}.
+    For more information, see \l{Add compilers}.
 
     You can connect devices to the development PC to run, debug, and
     analyze applications on them from \QC. You can connect the device to the
@@ -137,7 +137,7 @@
     \uicontrol General.
 
     For more information about the supported functions, see
-    \l{Using Version Control Systems}.
+    \l{Version Control Systems}.
 
     \section1 Managing Plugins
 

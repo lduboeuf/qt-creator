@@ -1280,7 +1280,7 @@ QStringList GitClient::setupCheckoutArguments(const FilePath &workingDirectory,
             ICore::dialogParent() /*parent*/,
             Tr::tr("Create Local Branch") /*title*/,
             Tr::tr("Would you like to create a local branch?") /*message*/,
-            QString("Git.CreateLocalBranchOnCheckout"), /* decider */
+            Key("Git.CreateLocalBranchOnCheckout"), /* decider */
             QMessageBox::Yes | QMessageBox::No /*buttons*/,
             QMessageBox::No /*default button*/,
             QMessageBox::No /*button to save*/)
@@ -2529,7 +2529,7 @@ FilePath GitClient::gitBinDirectory() const
             // Git for Windows uses Git/usr/bin. Prefer that if it exists.
             QString usrBinPath = path;
             usrBinPath.replace(usrBinPath.size() - 3, 3, "usr/bin");
-            if (QFile::exists(usrBinPath))
+            if (QFileInfo::exists(usrBinPath))
                 path = usrBinPath;
         }
     }

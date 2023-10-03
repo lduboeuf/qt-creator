@@ -17,7 +17,6 @@
 #include <utils/hostosinfo.h>
 #include <utils/process.h>
 #include <utils/qtcassert.h>
-#include <utils/settingsutils.h>
 
 #include <QDateTime>
 #include <QHash>
@@ -68,9 +67,9 @@ static FilePath fallbackClangdFilePath()
     return Environment::systemEnvironment().searchInPath("clangd");
 }
 
-void CppCodeModelSettings::fromSettings(QSettings *s)
+void CppCodeModelSettings::fromSettings(QtcSettings *s)
 {
-    s->beginGroup(QLatin1String(Constants::CPPEDITOR_SETTINGSGROUP));
+    s->beginGroup(Constants::CPPEDITOR_SETTINGSGROUP);
 
     setEnableLowerClazyLevels(s->value(enableLowerClazyLevelsKey(), true).toBool());
 
@@ -100,9 +99,9 @@ void CppCodeModelSettings::fromSettings(QSettings *s)
     emit changed();
 }
 
-void CppCodeModelSettings::toSettings(QSettings *s)
+void CppCodeModelSettings::toSettings(QtcSettings *s)
 {
-    s->beginGroup(QLatin1String(Constants::CPPEDITOR_SETTINGSGROUP));
+    s->beginGroup(Constants::CPPEDITOR_SETTINGSGROUP);
 
     s->setValue(enableLowerClazyLevelsKey(), enableLowerClazyLevels());
     s->setValue(pchUsageKey(), pchUsage());
@@ -400,9 +399,10 @@ FilePath ClangdSettings::clangdUserConfigFilePath()
 void ClangdSettings::loadSettings()
 {
     const auto settings = Core::ICore::settings();
-    Utils::fromSettings(clangdSettingsKey(), {}, settings, &m_data);
 
-    settings->beginGroup(QLatin1String(Constants::CPPEDITOR_SETTINGSGROUP));
+    m_data.fromMap(Utils::storeFromSettings(clangdSettingsKey(), settings));
+
+    settings->beginGroup(Constants::CPPEDITOR_SETTINGSGROUP);
     m_data.customDiagnosticConfigs = diagnosticConfigsFromSettings(settings);
 
     // Pre-8.0 compat
@@ -419,8 +419,8 @@ void ClangdSettings::loadSettings()
 void ClangdSettings::saveSettings()
 {
     const auto settings = Core::ICore::settings();
-    Utils::toSettings(clangdSettingsKey(), {}, settings, &m_data);
-    settings->beginGroup(QLatin1String(Constants::CPPEDITOR_SETTINGSGROUP));
+    Utils::storeToSettings(clangdSettingsKey(), settings, m_data.toMap());
+    settings->beginGroup(Constants::CPPEDITOR_SETTINGSGROUP);
     diagnosticConfigsToSettings(settings, m_data.customDiagnosticConfigs);
     settings->endGroup();
 }

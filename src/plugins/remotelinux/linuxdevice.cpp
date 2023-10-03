@@ -293,6 +293,12 @@ public:
     LinuxDevicePrivate *m_dev;
 };
 
+class LinuxDeviceSettings : public DeviceSettings
+{
+public:
+    LinuxDeviceSettings() { displayName.setDefaultValue(Tr::tr("Remote Linux Device")); }
+};
+
 class LinuxDevicePrivate
 {
 public:
@@ -841,7 +847,12 @@ public:
         connect(m_shell.get(), &DeviceShell::done, this, [this] {
             m_shell.release()->deleteLater();
         });
-        return m_shell->start();
+        auto result = m_shell->start();
+        if (!result) {
+            qCWarning(linuxDeviceLog) << "Failed to start shell for:" << parameters.userAtHost()
+                                      << ", " << result.error();
+        }
+        return result.has_value();
     }
 
     // Call me with shell mutex locked
@@ -937,7 +948,8 @@ private:
 // LinuxDevice
 
 LinuxDevice::LinuxDevice()
-    : d(new LinuxDevicePrivate(this))
+    : IDevice(std::make_unique<LinuxDeviceSettings>())
+    , d(new LinuxDevicePrivate(this))
 {
     setFileAccess(&d->m_fileAccess);
     setDisplayType(Tr::tr("Remote Linux"));

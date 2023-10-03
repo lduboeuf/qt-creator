@@ -86,17 +86,36 @@ void PySideInstaller::installPyside(const FilePath &python,
 {
     QMap<QVersionNumber, Utils::FilePath> availablePySides;
 
-    const std::optional<FilePath> qtInstallDir
-        = QtSupport::LinkWithQtSupport::linkedQt().tailRemoved("Tools/sdktool/share/qtcreator");
-    if (qtInstallDir) {
-        const FilePath qtForPythonDir = qtInstallDir->pathAppended("QtForPython");
-        for (const FilePath &versionDir : qtForPythonDir.dirEntries(QDir::Dirs | QDir::NoDotAndDotDot)) {
-            FilePath requirements = versionDir.pathAppended("requirements.txt");
-            if (requirements.exists())
-                availablePySides[QVersionNumber::fromString(versionDir.fileName())] = requirements;
+    const Utils::QtcSettings *settings = Core::ICore::settings(QSettings::SystemScope);
+
+    const FilePaths requirementsList
+        = Utils::transform(settings->value("Python/PySideWheelsRequirements").toList(),
+                           &FilePath::fromSettings);
+    for (const FilePath &requirements : requirementsList) {
+        if (requirements.exists()) {
+            auto version = QVersionNumber::fromString(requirements.parentDir().fileName());
+            availablePySides[version] = requirements;
         }
     }
 
+    if (requirementsList.isEmpty()) { // fallback remove in Qt Creator 13
+        const QString hostQtTail = HostOsInfo::isMacHost()
+                                       ? QString("Tools/sdktool")
+                                       : QString("Tools/sdktool/share/qtcreator");
+
+        const std::optional<FilePath> qtInstallDir
+            = QtSupport::LinkWithQtSupport::linkedQt().tailRemoved(hostQtTail);
+        if (qtInstallDir) {
+            const FilePath qtForPythonDir = qtInstallDir->pathAppended("QtForPython");
+            for (const FilePath &versionDir :
+                 qtForPythonDir.dirEntries(QDir::Dirs | QDir::NoDotAndDotDot)) {
+                FilePath requirements = versionDir.pathAppended("requirements.txt");
+                if (!requirementsList.contains(requirements) && requirements.exists())
+                    availablePySides[QVersionNumber::fromString(versionDir.fileName())]
+                        = requirements;
+            }
+        }
+    }
 
     auto install = new PipInstallTask(python);
     connect(install, &PipInstallTask::finished, install, &QObject::deleteLater);
@@ -104,7 +123,7 @@ void PySideInstaller::installPyside(const FilePath &python,
         if (success)
             emit pySideInstalled(python, pySide);
     });
-    if (qtInstallDir->isEmpty()) {
+    if (availablePySides.isEmpty()) {
         install->setPackages({PipPackage(pySide)});
     } else {
         QDialog dialog;
@@ -113,7 +132,7 @@ void PySideInstaller::installPyside(const FilePath &python,
         dialog.layout()->addWidget(new QLabel(Tr::tr("Select which PySide version to install:")));
         QComboBox *pySideSelector = new QComboBox();
         pySideSelector->addItem(Tr::tr("Latest PySide from the Python Package Index"));
-        for (const Utils::FilePath &version : availablePySides) {
+        for (const Utils::FilePath &version : std::as_const(availablePySides)) {
             const FilePath dir = version.parentDir();
             const QString text
                 = Tr::tr("PySide %1 wheel (%2)").arg(dir.fileName(), dir.toUserOutput());

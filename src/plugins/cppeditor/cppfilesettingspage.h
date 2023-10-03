@@ -36,8 +36,9 @@ public:
     bool headerPragmaOnce = false;
     bool lowerCaseFiles = Constants::LOWERCASE_CPPFILES_DEFAULT;
 
-    void toSettings(QSettings *) const;
-    void fromSettings(QSettings *);
+    void toSettings(Utils::QtcSettings *) const;
+    void fromSettings(Utils::QtcSettings *);
+    void addMimeInitializer() const;
     bool applySuffixesToMimeDB();
 
     // Convenience to return a license template completely formatted.

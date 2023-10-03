@@ -237,9 +237,6 @@ public:
                       const IDeviceConstPtr &device,
                       const Utils::FilePaths &searchPaths);
 
-    bool isBadToolchain(const Utils::FilePath &toolchain) const;
-    void addBadToolchain(const Utils::FilePath &toolchain) const;
-
     const Toolchains alreadyKnown;
     const IDeviceConstPtr device;
     const Utils::FilePaths searchPaths; // If empty use device path and/or magic.
@@ -263,7 +260,7 @@ public:
     virtual Toolchains detectForImport(const ToolChainDescription &tcd) const;
 
     virtual bool canCreate() const;
-    virtual ToolChain *create() const;
+    ToolChain *create() const;
 
     ToolChain *restore(const Utils::Store &data);
 
@@ -282,7 +279,9 @@ protected:
     void setSupportedToolChainType(const Utils::Id &supportedToolChainType);
     void setSupportedLanguages(const QList<Utils::Id> &supportedLanguages);
     void setSupportsAllLanguages(bool supportsAllLanguages);
-    void setToolchainConstructor(const std::function<ToolChain *()> &constructor);
+    using ToolChainConstructor = std::function<ToolChain *()>;
+    void setToolchainConstructor(const ToolChainConstructor &constructor);
+    ToolChainConstructor toolchainConstructor() const;
 
     class Candidate {
     public:
@@ -303,7 +302,7 @@ private:
     QList<Utils::Id> m_supportedLanguages;
     bool m_supportsAllLanguages = false;
     bool m_userCreatable = false;
-    std::function<ToolChain *()> m_toolchainConstructor;
+    ToolChainConstructor m_toolchainConstructor;
 };
 
 } // namespace ProjectExplorer

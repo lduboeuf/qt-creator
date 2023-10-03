@@ -38,6 +38,8 @@
 
 #include <extensionsystem/pluginmanager.h>
 
+#include <projectexplorer/kitmanager.h>
+
 #include <texteditor/texteditorconstants.h>
 
 #include <utils/algorithm.h>
@@ -45,6 +47,7 @@
 #include <utils/qtcassert.h>
 #include <utils/styledbar.h>
 #include <utils/stringutils.h>
+#include <utils/qtcsettings.h>
 #include <utils/theme/theme.h>
 #include <utils/tooltip/tooltip.h>
 
@@ -249,7 +252,7 @@ HelpPluginPrivate::HelpPluginPrivate()
                     Core::HelpManager::HelpModeAlways);
     });
 
-    const QString qdsStandaloneEntry = "QML/Designer/StandAloneMode"; //entry from designer settings
+    const Key qdsStandaloneEntry = "QML/Designer/StandAloneMode"; //entry from designer settings
     const bool isDesigner = Core::ICore::settings()->value(qdsStandaloneEntry, false).toBool();
 
     action = new QAction(Tr::tr("Report Bug..."), this);
@@ -283,7 +286,12 @@ void HelpPlugin::extensionsInitialized()
 
 bool HelpPlugin::delayedInitialize()
 {
-    HelpManager::setupHelpManager();
+    if (ProjectExplorer::KitManager::isLoaded()) {
+        HelpManager::setupHelpManager();
+    } else {
+        connect(ProjectExplorer::KitManager::instance(), &ProjectExplorer::KitManager::kitsLoaded,
+                this, &HelpManager::setupHelpManager);
+    }
     return true;
 }
 
@@ -347,7 +355,7 @@ HelpViewer *HelpPluginPrivate::externalHelpViewer()
     m_externalWindow = createHelpWidget(Context(Constants::C_HELP_EXTERNAL),
                                         HelpWidget::ExternalWindow);
     if (m_externalWindowState.isNull()) {
-        QSettings *settings = ICore::settings();
+        QtcSettings *settings = ICore::settings();
         m_externalWindowState = settings->value(kExternalWindowStateKey).toRect();
     }
     if (m_externalWindowState.isNull())

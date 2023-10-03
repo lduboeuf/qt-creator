@@ -28,6 +28,7 @@
 
 #include <utils/infobar.h>
 #include <utils/qtcassert.h>
+#include <utils/qtcsettings.h>
 #include <utils/stringutils.h>
 #include <utils/theme/theme.h>
 
@@ -44,22 +45,20 @@
 #include <QActionGroup>
 #include <QApplication>
 #include <QCursor>
+#include <QDebug>
 #include <QDockWidget>
+#include <QElapsedTimer>
+#include <QKeySequence>
 #include <QMenu>
 #include <QMessageBox>
-#include <QKeySequence>
+#include <QPainter>
+#include <QPluginLoader>
 #include <QPrintDialog>
 #include <QPrinter>
-#include <QPainter>
 #include <QStyle>
+#include <QTime>
 #include <QToolBar>
 #include <QVBoxLayout>
-
-#include <QDebug>
-#include <QSettings>
-#include <QPluginLoader>
-#include <QTime>
-#include <QElapsedTimer>
 
 #include <algorithm>
 
@@ -145,7 +144,7 @@ public:
 
     void fullInit();
 
-    void saveSettings(QSettings *s);
+    void saveSettings(QtcSettings *s);
 
     void initDesignerSubWindows();
 
@@ -283,7 +282,7 @@ FormEditorData::FormEditorData()
 FormEditorData::~FormEditorData()
 {
     if (m_initStage == FullyInitialized) {
-        QSettings *s = ICore::settings();
+        QtcSettings *s = ICore::settings();
         s->beginGroup(settingsGroupC);
         m_editorWidget->saveSettings(s);
         s->endGroup();
@@ -400,7 +399,7 @@ void FormEditorData::fullInit()
 
     // Nest toolbar and editor widget
     m_editorWidget = new EditorWidget;
-    QSettings *settings = ICore::settings();
+    QtcSettings *settings = ICore::settings();
     settings->beginGroup(settingsGroupC);
     m_editorWidget->restoreSettings(settings);
     settings->endGroup();
@@ -702,7 +701,7 @@ void FormEditorData::setPreviewMenuEnabled(bool e)
     m_previewInStyleMenu->setEnabled(e);
 }
 
-void FormEditorData::saveSettings(QSettings *s)
+void FormEditorData::saveSettings(QtcSettings *s)
 {
     s->beginGroup(settingsGroupC);
     m_editorWidget->saveSettings(s);
@@ -916,7 +915,7 @@ void setQtPluginPath(const QString &qtPluginPath)
     *sQtPluginPath = Utils::trimBack(*sQtPluginPath, '/');
     if (sQtPluginPath->endsWith(postfix))
         sQtPluginPath->chop(postfix.size());
-    if (!QFile::exists(*sQtPluginPath + postfix)) {
+    if (!QFileInfo::exists(*sQtPluginPath + postfix)) {
         qWarning() << qPrintable(
             QLatin1String(
                 "Warning: The path \"%1\" passed to -designer-qt-pluginpath does not exist. "

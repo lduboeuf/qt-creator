@@ -24,13 +24,13 @@
 #include "toolchainmanager.h"
 #include "userfileaccessor.h"
 
-#include <coreplugin/idocument.h>
 #include <coreplugin/documentmanager.h>
+#include <coreplugin/editormanager/documentmodel.h>
 #include <coreplugin/icontext.h>
 #include <coreplugin/icore.h>
+#include <coreplugin/idocument.h>
 #include <coreplugin/iversioncontrol.h>
 #include <coreplugin/vcsmanager.h>
-#include <coreplugin/editormanager/documentmodel.h>
 
 #include <projectexplorer/buildmanager.h>
 #include <projectexplorer/kitmanager.h>
@@ -643,6 +643,12 @@ void Project::saveSettings()
 
 Project::RestoreResult Project::restoreSettings(QString *errorMessage)
 {
+    if (!KitManager::waitForLoaded()) {
+        if (errorMessage)
+            *errorMessage = Tr::tr("Could not load kits in a reasonable amount of time.");
+        return RestoreResult::Error;
+    }
+
     if (!d->m_accessor)
         d->m_accessor = std::make_unique<Internal::UserFileAccessor>(this);
     Store map(d->m_accessor->restoreSettings(ICore::dialogParent()));
@@ -698,7 +704,7 @@ void Project::toMap(Store &map) const
     map.insert(ACTIVE_TARGET_KEY, ts.indexOf(d->m_activeTarget));
     map.insert(TARGET_COUNT_KEY, ts.size());
     for (int i = 0; i < ts.size(); ++i)
-        map.insert(TARGET_KEY_PREFIX + Key::number(i), variantFromStore(ts.at(i)->toMap()));
+        map.insert(numberedKey(TARGET_KEY_PREFIX, i), variantFromStore(ts.at(i)->toMap()));
 
     map.insert(EDITOR_SETTINGS_KEY, variantFromStore(d->m_editorConfiguration.toMap()));
     if (!d->m_pluginSettings.isEmpty())
@@ -801,7 +807,7 @@ Project::RestoreResult Project::fromMap(const Store &map, QString *errorMessage)
 
 void Project::createTargetFromMap(const Store &map, int index)
 {
-    const Key key = TARGET_KEY_PREFIX + Key::number(index);
+    const Key key = numberedKey(TARGET_KEY_PREFIX, index);
     if (!map.contains(key))
         return;
 
@@ -1494,8 +1500,10 @@ void ProjectExplorerPlugin::testProject_multipleBuildConfigs()
     QVERIFY(tempDir->isValid());
     const FilePath projectDir = FilePath::fromString(tempDir->path() + "/generic-project");
     const auto copyResult = FilePath(":/projectexplorer/testdata/generic-project").copyRecursively(projectDir);
+    if (!copyResult)
+        qDebug() << copyResult.error();
+    QVERIFY(copyResult);
 
-    QVERIFY2(copyResult, qPrintable(copyResult.error()));
     const QFileInfoList files = QDir(projectDir.toString()).entryInfoList(QDir::Files | QDir::Dirs);
     for (const QFileInfo &f : files)
         QFile(f.absoluteFilePath()).setPermissions(f.permissions() | QFile::WriteUser);
@@ -1556,7 +1564,9 @@ void ProjectExplorerPlugin::testSourceToBinaryMapping()
     if (!projectDir.exists()) {
         const auto result = FilePath(":/projectexplorer/testdata/multi-target-project")
                                 .copyRecursively(projectDir);
-        QVERIFY2(result, qPrintable(result.error()));
+        if (!result)
+            qDebug() << result.error();
+        QVERIFY(result);
         const QFileInfoList files = QDir(projectDir.toString()).entryInfoList(QDir::Files);
         for (const QFileInfo &f : files)
             QFile(f.absoluteFilePath()).setPermissions(f.permissions() | QFile::WriteUser);

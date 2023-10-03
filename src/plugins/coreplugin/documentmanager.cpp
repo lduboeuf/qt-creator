@@ -3,25 +3,24 @@
 
 #include "documentmanager.h"
 
+#include "actionmanager/actioncontainer.h"
+#include "actionmanager/actionmanager.h"
+#include "actionmanager/command.h"
 #include "coreconstants.h"
 #include "coreplugintr.h"
+#include "diffservice.h"
+#include "dialogs/filepropertiesdialog.h"
+#include "dialogs/readonlyfilesdialog.h"
+#include "dialogs/saveitemsdialog.h"
+#include "editormanager/editormanager.h"
+#include "editormanager/editormanager_p.h"
+#include "editormanager/editorview.h"
+#include "editormanager/ieditor.h"
+#include "editormanager/ieditorfactory.h"
 #include "icore.h"
 #include "idocument.h"
 #include "idocumentfactory.h"
-
-#include <coreplugin/actionmanager/actioncontainer.h>
-#include <coreplugin/actionmanager/actionmanager.h>
-#include <coreplugin/actionmanager/command.h>
-#include <coreplugin/diffservice.h>
-#include <coreplugin/dialogs/filepropertiesdialog.h>
-#include <coreplugin/dialogs/readonlyfilesdialog.h>
-#include <coreplugin/dialogs/saveitemsdialog.h>
-#include <coreplugin/editormanager/editormanager.h>
-#include <coreplugin/editormanager/editormanager_p.h>
-#include <coreplugin/editormanager/editorview.h>
-#include <coreplugin/editormanager/ieditor.h>
-#include <coreplugin/editormanager/ieditorfactory.h>
-#include <coreplugin/systemsettings.h>
+#include "systemsettings.h"
 
 #include <extensionsystem/pluginmanager.h>
 
@@ -47,7 +46,6 @@
 #include <QMainWindow>
 #include <QMenu>
 #include <QMessageBox>
-#include <QSettings>
 #include <QStringList>
 #include <QTimer>
 
@@ -1400,22 +1398,22 @@ void restoreRecentFiles(const QVariantList &recentFiles, const QStringList &rece
 
 void readSettings()
 {
-    QSettings *s = ICore::settings();
+    QtcSettings *s = ICore::settings();
     d->m_recentFiles.clear();
-    s->beginGroup(QLatin1String(settingsGroupC));
-    const QVariantList recentFiles = s->value(QLatin1String(filesKeyC)).toList();
-    const QStringList recentEditorIds = s->value(QLatin1String(editorsKeyC)).toStringList();
+    s->beginGroup(settingsGroupC);
+    const QVariantList recentFiles = s->value(filesKeyC).toList();
+    const QStringList recentEditorIds = s->value(editorsKeyC).toStringList();
     s->endGroup();
 
     restoreRecentFiles(recentFiles, recentEditorIds);
 
-    s->beginGroup(QLatin1String(directoryGroupC));
+    s->beginGroup(directoryGroupC);
 
     d->m_projectsDirectory = FilePath::fromSettings(
-        s->value(QLatin1String(projectDirectoryKeyC), PathChooser::homePath().toSettings()));
+        s->value(projectDirectoryKeyC, PathChooser::homePath().toSettings()));
 
     d->m_useProjectsDirectory
-        = s->value(QLatin1String(useProjectDirectoryKeyC), kUseProjectsDirectoryDefault).toBool();
+        = s->value(useProjectDirectoryKeyC, kUseProjectsDirectoryDefault).toBool();
 
     s->endGroup();
 }

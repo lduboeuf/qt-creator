@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include <coreplugin/minisplitter.h>
+#include "minisplitter.h"
 
 #include <utils/id.h>
 #include <utils/store.h>
@@ -72,7 +72,7 @@ public:
 
     Utils::Key settingsGroup() const;
     void saveSettings(Utils::QtcSettings *settings);
-    void restoreSettings(QSettings *settings);
+    void restoreSettings(Utils::QtcSettings *settings);
 
     QWidget *activateSubWidget(Utils::Id factoryId, int preferredPosition);
     void closeSubWidgets();

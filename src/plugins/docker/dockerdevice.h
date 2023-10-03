@@ -14,42 +14,28 @@
 
 namespace Docker::Internal {
 
-class DockerDeviceData
+class DockerDeviceSettings : public ProjectExplorer::DeviceSettings
 {
 public:
-    bool operator==(const DockerDeviceData &other) const
-    {
-        return imageId == other.imageId && repo == other.repo && tag == other.tag
-               && useLocalUidGid == other.useLocalUidGid && mounts == other.mounts
-               && keepEntryPoint == other.keepEntryPoint && enableLldbFlags == other.enableLldbFlags
-               && clangdExecutable == other.clangdExecutable;
-    }
+    DockerDeviceSettings();
 
-    bool operator!=(const DockerDeviceData &other) const { return !(*this == other); }
+    void fromMap(const Utils::Store &map) override;
 
-    // Used for "docker run"
-    QString repoAndTag() const
-    {
-        if (repo == "<none>")
-            return imageId;
+    QString repoAndTag() const;
+    QString repoAndTagEncoded() const;
 
-        if (tag == "<none>")
-            return repo;
+    Utils::StringAspect imageId{this};
+    Utils::StringAspect repo{this};
+    Utils::StringAspect tag{this};
+    Utils::BoolAspect useLocalUidGid{this};
+    Utils::FilePathListAspect mounts{this};
+    Utils::BoolAspect keepEntryPoint{this};
+    Utils::BoolAspect enableLldbFlags{this};
+    Utils::FilePathAspect clangdExecutable{this};
+    Utils::StringSelectionAspect network{this};
+    Utils::StringAspect extraArgs{this};
 
-        return repo + ':' + tag;
-    }
-
-    QString repoAndTagEncoded() const { return repoAndTag().replace(':', '.'); }
-
-    QString imageId;
-    QString repo;
-    QString tag;
-    QString size;
-    bool useLocalUidGid = true;
-    QStringList mounts = {Core::DocumentManager::projectsDirectory().toString()};
-    bool keepEntryPoint = false;
-    bool enableLldbFlags = false;
-    Utils::FilePath clangdExecutable;
+    Utils::TextDisplay containerStatus{this};
 };
 
 class DockerDevice : public ProjectExplorer::IDevice
@@ -58,15 +44,17 @@ public:
     using Ptr = QSharedPointer<DockerDevice>;
     using ConstPtr = QSharedPointer<const DockerDevice>;
 
-    explicit DockerDevice(const DockerDeviceData &data);
+    explicit DockerDevice(std::unique_ptr<DockerDeviceSettings> settings);
     ~DockerDevice();
 
     void shutdown();
 
-    static Ptr create(const DockerDeviceData &data)
+    static Ptr create(std::unique_ptr<DockerDeviceSettings> settings)
     {
-        return Ptr(new DockerDevice(data));
+        return Ptr(new DockerDevice(std::move(settings)));
     }
+
+    Utils::CommandLine createCommandLine() const;
 
     ProjectExplorer::IDeviceWidget *createWidget() override;
     QList<ProjectExplorer::Task> validate() const override;
@@ -86,11 +74,6 @@ public:
     Utils::expected_str<Utils::FilePath> localSource(const Utils::FilePath &other) const override;
 
     Utils::Environment systemEnvironment() const override;
-
-    const DockerDeviceData data() const;
-    DockerDeviceData data();
-
-    void setData(const DockerDeviceData &data);
 
     bool updateContainerAccess() const;
     void setMounts(const QStringList &mounts) const;
@@ -124,5 +107,3 @@ private:
 };
 
 } // namespace Docker::Internal
-
-Q_DECLARE_METATYPE(Docker::Internal::DockerDeviceData)

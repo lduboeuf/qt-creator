@@ -5,6 +5,7 @@
 
 #include "abi.h"
 #include "devicesupport/devicemanager.h"
+#include "kitoptionspage.h"
 #include "projectexplorerconstants.h"
 #include "projectexplorertr.h"
 #include "toolchain.h"
@@ -181,7 +182,11 @@ public:
         m_toolChainView->setUniformRowHeights(true);
         m_toolChainView->setSelectionMode(QAbstractItemView::SingleSelection);
         m_toolChainView->setSelectionBehavior(QAbstractItemView::SelectRows);
-        m_toolChainView->setModel(&m_model);
+        m_sortModel.setSourceModel(&m_model);
+        m_sortModel.setSortedCategories({Constants::msgAutoDetected(), Constants::msgManual()});
+        m_toolChainView->setModel(&m_sortModel);
+        m_toolChainView->setSortingEnabled(true);
+        m_toolChainView->sortByColumn(0, Qt::AscendingOrder);
         m_toolChainView->header()->setStretchLastSection(false);
         m_toolChainView->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
         m_toolChainView->header()->setSectionResizeMode(1, QHeaderView::Stretch);
@@ -314,6 +319,7 @@ public:
 
  private:
     TreeModel<TreeItem, ToolChainTreeItem> m_model;
+    KitSettingsSortModel m_sortModel;
     QList<ToolChainFactory *> m_factories;
     QTreeView *m_toolChainView;
     DetailsWidget *m_container;
@@ -518,7 +524,7 @@ void ToolChainOptionsWidget::createToolChain(ToolChainFactory *factory, const Ut
     auto item = insertToolChain(tc, true);
     m_toAddList.append(item);
 
-    m_toolChainView->setCurrentIndex(m_model.indexForItem(item));
+    m_toolChainView->setCurrentIndex(m_sortModel.mapFromSource(m_model.indexForItem(item)));
 }
 
 void ToolChainOptionsWidget::cloneToolChain()
@@ -537,7 +543,7 @@ void ToolChainOptionsWidget::cloneToolChain()
     auto item = insertToolChain(tc, true);
     m_toAddList.append(item);
 
-    m_toolChainView->setCurrentIndex(m_model.indexForItem(item));
+    m_toolChainView->setCurrentIndex(m_sortModel.mapFromSource(m_model.indexForItem(item)));
 }
 
 void ToolChainOptionsWidget::updateState()
@@ -556,8 +562,7 @@ void ToolChainOptionsWidget::updateState()
 
 ToolChainTreeItem *ToolChainOptionsWidget::currentTreeItem()
 {
-    QModelIndex index = m_toolChainView->currentIndex();
-    TreeItem *item = m_model.itemForIndex(index);
+    TreeItem *item = m_model.itemForIndex(m_sortModel.mapToSource(m_toolChainView->currentIndex()));
     return (item && item->level() == 3) ? static_cast<ToolChainTreeItem *>(item) : nullptr;
 }
 

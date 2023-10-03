@@ -152,6 +152,10 @@ AppOutputPane::AppOutputPane() :
         Tr::tr("Show the output that generated this issue in Application Output."),
         Tr::tr("A")))
 {
+    setId("ApplicationOutput");
+    setDisplayName(Tr::tr("Application Output"));
+    setPriorityInStatusBar(60);
+
     ExtensionSystem::PluginManager::addObject(m_handler);
 
     setObjectName("AppOutputPane"); // Used in valgrind engine
@@ -303,16 +307,6 @@ QList<QWidget *> AppOutputPane::toolBarWidgets() const
 {
     return QList<QWidget *>{m_reRunButton, m_stopButton, m_attachButton, m_settingsButton,
                 m_formatterWidget} + IOutputPane::toolBarWidgets();
-}
-
-QString AppOutputPane::displayName() const
-{
-    return Tr::tr("Application Output");
-}
-
-int AppOutputPane::priorityInStatusBar() const
-{
-    return 60;
 }
 
 void AppOutputPane::clearContents()
@@ -542,8 +536,8 @@ void AppOutputPane::storeSettings() const
 
 void AppOutputPane::loadSettings()
 {
-    QSettings * const s = Core::ICore::settings();
-    const auto modeFromSettings = [s](const QString key, AppOutputPaneMode defaultValue) {
+    QtcSettings * const s = Core::ICore::settings();
+    const auto modeFromSettings = [s](const Key key, AppOutputPaneMode defaultValue) {
         return static_cast<AppOutputPaneMode>(s->value(key, int(defaultValue)).toInt());
     };
     m_settings.runOutputMode = modeFromSettings(POP_UP_FOR_RUN_OUTPUT_KEY, kRunOutputModeDefault);
